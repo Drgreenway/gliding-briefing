@@ -10,6 +10,8 @@
   --bg:#f2f5f7; --surface:#ffffff; --ink:#15212b; --muted:#586976; --line:#d3dce2;
   --accent:#17689f; --accent-ink:#ffffff; --plot:#e6eef4; --ground:#8c8275; --halo:#ffffff;
   --warn-bg:#fff3dd; --warn-ink:#6a3f00; --cloud:#7d8b97; --wave:#7a4fb0; --n-warn:#c2410c;
+  --sat:var(--safe-area-inset-top,env(safe-area-inset-top,0px)); --sar:var(--safe-area-inset-right,env(safe-area-inset-right,0px));
+  --sab:var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)); --sal:var(--safe-area-inset-left,env(safe-area-inset-left,0px));
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -21,9 +23,11 @@
   }
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
-.page{max-width:1080px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+html{-webkit-text-size-adjust:100%;height:100%;overflow:hidden}
+body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+/* The page scrolls inside this box. In the Android app the box sits between the status bar and the navigation bar, and it cannot pan sideways. */
+.scroller{position:fixed;top:var(--sat);right:var(--sar);bottom:var(--sab);left:var(--sal);overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.page{max-width:1080px;margin:0 auto;padding:20px 16px 40px}
 h1{margin:0;font-size:1.4rem;letter-spacing:-.01em}
 .sub{margin:2px 0 14px;color:var(--muted)}
 .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
@@ -109,7 +113,7 @@ a{color:var(--accent)}
 </style>
 </head>
 <body>
-<div class="page">
+<div class="scroller"><div class="page">
 <header>
   <h1>Soaring Meteogram</h1>
   <p class="sub">Hourly thermal strength, ceiling, cloudbase and wind for a gliding site, from free model data.</p>
@@ -156,7 +160,7 @@ a{color:var(--accent)}
       <label>Date<select id="bdate"></select></label>
       <label class="grow">Time <span id="btime" class="muted"></span><input id="bhour" type="range" min="6" max="20" step="1" value="12"></label>
       <label class="chk"><input id="ball" type="checkbox" checked>Whole day</label>
-      <label>Map<select id="btiles"><option value="osm">OpenStreetMap</option><option value="carto">CARTO light</option><option value="none">No map</option></select></label>
+      <label>Map<select id="btiles"><option value="osm">OpenStreetMap</option><option value="none">No map</option></select></label>
     </div>
     <div class="briefgrid">
       <div><div id="mapwrap" class="mapwrap"></div><div class="mapbar"><button id="mapzoom" class="btn alt" type="button" disabled>Zoom to selected notice</button></div></div>
@@ -172,13 +176,14 @@ a{color:var(--accent)}
       <li>The Wave strip is a rough guide. It darkens when the wind aloft is strong, increases with height, holds a steady direction and meets a stable layer. These are ingredients for wave, not a forecast of it, because the free models cannot resolve the lift itself.</li>
       <li>NOTAMs come from the NATS UK pre-flight bulletin, which can be an hour out of date. A notice is drawn as its written boundary when it has one, and otherwise as a circle from its centre point and radius. Smaller areas sit on top of larger ones. Notices are filtered by their start and end dates and by schedules such as FRI SAT 1400-2300 (UTC). A schedule in any other form is not read, so the notice is shown and tagged.</li>
       <li>"Starts below forecast ceiling" means the notice's lower limit is under the highest thermal ceiling the model forecasts for the date and time you chose. It is not a fixed height and says nothing about wave.</li>
-      <li>Map tiles come from OpenStreetMap or CARTO and need an internet connection. Google's map tiles cannot be used outside Google's own map code.</li>
+      <li>Map tiles come from OpenStreetMap and need an internet connection. Google's map tiles cannot be used outside Google's own map code, and CARTO's need an API key.</li>
       <li>Heights are above mean sea level. Barbs show wind from the direction of the staff, with full barbs for 10 kt and half barbs for 5 kt.</li>
       <li>Thermal top comes from lifting a surface parcel, warmed according to sunshine, up through the model's pressure-level temperatures. Cloudbase uses 125 m per °C of dew point spread. For hill sites enter the field elevation so surface values are corrected.</li>
       <li>Data is from <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>, which is free for non-commercial use and serves ECMWF, ICON, GFS and UKMO output. Upper-air data differs by model, so try another if the columns look empty. This is not a substitute for an official briefing.</li>
     </ul>
   </section>
 </main>
+</div>
 </div>
 <noscript>This app needs JavaScript.</noscript>
 
@@ -644,7 +649,7 @@ if (typeof module !== 'undefined') module.exports = SoarCore;
       if (s.hunit === 'm' || s.hunit === 'ft') state.hunit = s.hunit;
       if (s.lunit === 'ms' || s.lunit === 'kt') state.lunit = s.lunit;
       if (Number.isFinite(s.elev)) state.elev = s.elev;
-      if (['osm', 'carto', 'none'].includes(s.tiles)) state.tiles = s.tiles;
+      if (['osm', 'none'].includes(s.tiles)) state.tiles = s.tiles;
     } catch (e) {}
   }
 
@@ -1016,8 +1021,7 @@ if (typeof module !== 'undefined') module.exports = SoarCore;
   /* briefing: NOTAM map, list and text */
   const NURL = 'https://pibs.nats.co.uk/operational/pibs/PIB.xml';
   const TILES = {
-    osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors' },
-    carto: { url: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors © CARTO' }
+    osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors' }
   };
   const pad2 = (n) => String(n).padStart(2, '0');
   const fmtZ = (ms) => { if (ms === null || ms === undefined) return '?'; const d = new Date(ms); return pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + ' ' + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + 'Z'; };
@@ -1081,11 +1085,8 @@ if (typeof module !== 'undefined') module.exports = SoarCore;
     $('mapwrap').querySelectorAll('[data-i]').forEach((el) => el.classList.toggle('sel', i !== null && +el.dataset.i === i));
     syncZoomBtn();
   }
-  function selectNotam(i) {
-    highlightMap(i);
-    $('notamlist').querySelectorAll('details').forEach((d) => { d.open = i !== null && +d.dataset.i === i; });
-    if (i !== null) { const d = $('notamlist').querySelector('details[data-i="' + i + '"]'); if (d) d.scrollIntoView({ block: 'nearest' }); }
-  }
+  /* Tapping a notice on the map only shows its pop-up and highlights it. The page does not move. */
+  function selectNotam(i) { highlightMap(i); }
 
   function drawMap(mapped) {
     const wrap = $('mapwrap');
@@ -1349,6 +1350,9 @@ if (typeof module !== 'undefined') module.exports = SoarCore;
       const el = e.target.closest && e.target.closest('[data-i]');
       if (el) { const i = +el.dataset.i; state.pin = i; showTip(i, e); selectNotam(i); }
       else { state.pin = null; hideTip(); selectNotam(null); }
+    });
+    document.addEventListener('click', (e) => {
+      if (state.pin !== null && !mw.contains(e.target) && !(e.target.closest && e.target.closest('#mapzoom, #notamlist'))) { state.pin = null; hideTip(); highlightMap(null); }
     });
     $('notamlist').addEventListener('click', (e) => {
       const sm = e.target.closest && e.target.closest('summary');

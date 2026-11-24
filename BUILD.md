@@ -67,8 +67,9 @@ Replace `src/soaring-meteogram.html` with the new version, then build again.
 - **"Could not fetch NOTAMs" inside the app:** the native web requests are not active. Check that
   `capacitor.config.json` still has `CapacitorHttp` enabled and that you ran `npm run sync` after any edit.
   Send me the exact message.
-- **Grey map with no tiles:** set the Map dropdown to CARTO light. OpenStreetMap's tile server may refuse
-  requests from an app.
-- **Page content sits under the status bar or navigation bar:** tell me which phone and Android version.
+- **Grey map with no tiles:** the map tiles come from OpenStreetMap and need an internet connection.
+  Check the phone is online, then pull the page down and reopen the app.
+- **Page content sits under the status bar or navigation bar:** the page keeps clear of both bars using
+  Capacitor's safe-area values. Tell me which phone and Android version if they still overlap.
 - **Fetching the NOTAMs hangs or fails only in the app:** the NATS file is a few megabytes. Tell me how long it took.
 - **`npx cap add android` complains about the Node version:** install the current Node LTS.
