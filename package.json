@@ -1,0 +1,12 @@
+{
+  "name": "soaring-meteogram",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Soaring Meteogram as an Android app, a Capacitor wrapper around one HTML page",
+  "scripts": {
+    "web": "node scripts/copy-web.js",
+    "sync": "node scripts/copy-web.js && npx cap sync android",
+    "open": "npx cap open android",
+    "apk": "npm run sync && node scripts/build-apk.js"
+  }
+}

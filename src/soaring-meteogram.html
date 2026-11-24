@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Soaring Meteogram</title>
+<style>
+/* Layout: one column. Controls on top, day picker, the meteogram, a readout for the hour under the cursor, then notes. */
+:root{
+  --bg:#f2f5f7; --surface:#ffffff; --ink:#15212b; --muted:#586976; --line:#d3dce2;
+  --accent:#17689f; --accent-ink:#ffffff; --plot:#e6eef4; --ground:#8c8275; --halo:#ffffff;
+  --warn-bg:#fff3dd; --warn-ink:#6a3f00; --cloud:#7d8b97; --wave:#7a4fb0; --n-warn:#c2410c;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e1820; --surface:#16232d; --ink:#e6eef3; --muted:#92a4b1; --line:#2a3a46;
+    --accent:#5fb0e6; --accent-ink:#06202f; --plot:#1b2b36; --ground:#6b6358; --halo:#0e1820;
+    --warn-bg:#3a2d12; --warn-ink:#f3d79a; --cloud:#cdd8e0; --wave:#b79af0; --n-warn:#fb923c;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+.page{max-width:1080px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+h1{margin:0;font-size:1.4rem;letter-spacing:-.01em}
+.sub{margin:2px 0 14px;color:var(--muted)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted);min-width:0}
+select,input,button{font:inherit;color:var(--ink)}
+select,input{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-width:0;width:100%}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.search{display:flex;gap:8px;margin-top:10px}
+.search input{flex:1}
+.search button,.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:7px 14px;font-weight:600}
+.btn.alt{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.results{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--surface);overflow:hidden}
+.results button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px}
+.results li:last-child button{border-bottom:0}
+.results button:hover{background:var(--plot)}
+.results .none{padding:8px 10px;color:var(--muted)}
+.status{margin:14px 0 10px;font-size:.85rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.status.warn{background:var(--warn-bg);color:var(--warn-ink);padding:10px 12px;border-radius:8px}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px}
+.day{flex:0 0 auto;min-width:104px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.day b{font-size:.9rem}
+.day span{font-size:.74rem;color:var(--muted)}
+.day i{display:block;height:4px;border-radius:2px;margin-top:4px}
+.day[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.chartwrap{width:100%;overflow:hidden;outline-offset:-2px}
+.chartwrap svg{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
+.ax{fill:var(--muted);font:10px system-ui,sans-serif}
+.axl{fill:var(--muted);font:9px system-ui,sans-serif}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;margin-top:10px;font-size:.78rem;color:var(--muted)}
+.ramp{display:flex;flex-direction:column;gap:2px;min-width:200px}
+.ramp .bar{height:10px;border-radius:5px}
+.ramp .ticks{display:flex;justify-content:space-between}
+.key{display:inline-flex;align-items:center;gap:6px}
+.key svg{width:26px;height:10px}
+.readout{margin-top:12px}
+.readout h2{margin:0 0 8px;font-size:1rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px;margin:0}
+.grid div{min-width:0}
+.grid dt{font-size:.74rem;color:var(--muted)}
+.grid dd{margin:0;font-weight:600}
+.notes{margin-top:16px;color:var(--muted);font-size:.82rem}
+.notes ul{padding-left:18px;margin:6px 0}
+.notes li{margin:3px 0}
+a{color:var(--accent)}
+.muted{color:var(--muted)}
+.filters{margin-top:12px;align-items:flex-end}
+.filters label{flex:0 1 150px}
+.filters label.grow{flex:1 1 200px}
+.filters label.chk{flex-direction:row;align-items:center;gap:6px;flex:0 0 auto;color:var(--ink);padding-bottom:7px}
+.filters input[type=checkbox]{width:auto}
+.filters input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent)}
+.mapwrap{position:relative}
+.mapbar{margin-top:8px}
+.btn:disabled{opacity:.5;cursor:default}
+.maptip{position:absolute;z-index:5;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.78rem;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none;overflow-wrap:anywhere}
+.lab{fill:var(--ink);font:10px system-ui,sans-serif;paint-order:stroke;stroke:var(--halo);stroke-width:3px;stroke-linejoin:round}
+.nshape,.nbadge{cursor:pointer}
+.nshape.sel{stroke-width:3.6;fill-opacity:.45}
+.nbadge.sel circle{stroke-width:3.2}
+.nlist summary{cursor:pointer}
+.nlist summary .nmeta{display:block}
+.nlist details[open] summary{margin-bottom:4px}
+.brief{margin-top:16px}
+.brief h2{margin:0 0 10px;font-size:1.05rem}
+.brief h3{margin:14px 0 6px;font-size:.9rem}
+.briefbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filebtn{display:inline-block;cursor:pointer}
+.nstatus{font-size:.82rem;color:var(--muted);flex:1 1 220px;min-width:0}
+.nstatus.warn{background:var(--warn-bg);color:var(--warn-ink);padding:8px 10px;border-radius:8px}
+.briefgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-top:12px}
+.briefgrid>*{min-width:0}
+.mapwrap svg{display:block;width:100%;height:auto;border-radius:8px}
+.nlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.nlist li{display:flex;gap:10px;font-size:.85rem}
+.nnum{flex:0 0 22px;height:22px;border-radius:50%;border:1.5px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:600}
+.nmeta{color:var(--muted);font-size:.78rem}
+.ntext{overflow-wrap:anywhere;margin-top:2px}
+.tag{display:inline-block;background:var(--warn-bg);color:var(--warn-ink);border-radius:4px;padding:0 6px;font-size:.72rem;margin-left:4px}
+@media (max-width:520px){.page{padding-top:14px}.sub{margin-bottom:10px}}
+@media (prefers-reduced-motion:no-preference){.day{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <h1>Soaring Meteogram</h1>
+  <p class="sub">Hourly thermal strength, ceiling, cloudbase and wind for a gliding site, from free model data.</p>
+  <div class="controls">
+    <label>Site<select id="site"></select></label>
+    <label>Model
+      <select id="model">
+        <option value="best_match">Best match (auto)</option>
+        <option value="ecmwf_ifs025">ECMWF IFS</option>
+        <option value="icon_seamless">DWD ICON</option>
+        <option value="gfs_seamless">NOAA GFS</option>
+        <option value="ukmo_seamless">Met Office UKMO</option>
+        <option value="meteofrance_seamless">Météo-France</option>
+      </select>
+    </label>
+    <label>Heights<select id="hunit"><option value="ft">Feet</option><option value="m">Metres</option></select></label>
+    <label>Lift<select id="lunit"><option value="kt">Knots</option><option value="ms">m/s</option></select></label>
+    <label>Elevation override<input id="elev" type="number" min="0" max="3000" step="10" placeholder="metres, optional" inputmode="numeric"></label>
+  </div>
+  <form id="searchform" class="search">
+    <input id="q" type="search" placeholder="Find another place or airfield" autocomplete="off" aria-label="Search for a place">
+    <button type="submit">Search</button>
+  </form>
+  <ul id="results" class="results" hidden></ul>
+</header>
+
+<main>
+  <div id="status" class="status" role="status">Loading forecast…</div>
+  <div id="days" class="days" aria-label="Forecast day"></div>
+  <section class="card">
+    <div id="chartwrap" class="chartwrap" tabindex="0" aria-label="Meteogram. Use the left and right arrow keys to move between hours."></div>
+    <div id="legend" class="legend"></div>
+  </section>
+  <section id="readout" class="card readout" aria-live="polite"></section>
+  <section id="brief" class="card brief">
+    <h2>Briefing</h2>
+    <div class="briefbar">
+      <button id="notamload" class="btn" type="button">Fetch NOTAMs</button>
+      <label class="filebtn btn alt">Load PIB.xml file<input id="pibfile" type="file" accept=".xml,text/xml,application/xml" hidden></label>
+      <button id="notamdemo" class="btn alt" type="button">Demo notices</button>
+      <div id="notamstatus" class="nstatus" role="status">NOTAMs not loaded yet.</div>
+    </div>
+    <div class="briefbar filters">
+      <label>Date<select id="bdate"></select></label>
+      <label class="grow">Time <span id="btime" class="muted"></span><input id="bhour" type="range" min="6" max="20" step="1" value="12"></label>
+      <label class="chk"><input id="ball" type="checkbox" checked>Whole day</label>
+      <label>Map<select id="btiles"><option value="osm">OpenStreetMap</option><option value="carto">CARTO light</option><option value="none">No map</option></select></label>
+    </div>
+    <div class="briefgrid">
+      <div><div id="mapwrap" class="mapwrap"></div><div class="mapbar"><button id="mapzoom" class="btn alt" type="button" disabled>Zoom to selected notice</button></div></div>
+      <div id="notamlist"></div>
+    </div>
+  </section>
+  <section class="notes">
+    <strong>How to read this</strong>
+    <ul>
+      <li>Coloured columns run from the ground to the usable ceiling. Colour is thermal strength (W*), a guide to climb rates rather than a measured value.</li>
+      <li>A white line marks cloudbase on hours when cumulus should form. Where there is no white line the ceiling is the top of the thermals, so expect blue conditions.</li>
+      <li>Grey shading shows the model's cloud cover at each height, with a cloud icon where a layer reaches 40% or more. Cumulus is shaded from cloudbase up to the thermal top.</li>
+      <li>The Wave strip is a rough guide. It darkens when the wind aloft is strong, increases with height, holds a steady direction and meets a stable layer. These are ingredients for wave, not a forecast of it, because the free models cannot resolve the lift itself.</li>
+      <li>NOTAMs come from the NATS UK pre-flight bulletin, which can be an hour out of date. A notice is drawn as its written boundary when it has one, and otherwise as a circle from its centre point and radius. Smaller areas sit on top of larger ones. Notices are filtered by their start and end dates and by schedules such as FRI SAT 1400-2300 (UTC). A schedule in any other form is not read, so the notice is shown and tagged.</li>
+      <li>"Starts below forecast ceiling" means the notice's lower limit is under the highest thermal ceiling the model forecasts for the date and time you chose. It is not a fixed height and says nothing about wave.</li>
+      <li>Map tiles come from OpenStreetMap or CARTO and need an internet connection. Google's map tiles cannot be used outside Google's own map code.</li>
+      <li>Heights are above mean sea level. Barbs show wind from the direction of the staff, with full barbs for 10 kt and half barbs for 5 kt.</li>
+      <li>Thermal top comes from lifting a surface parcel, warmed according to sunshine, up through the model's pressure-level temperatures. Cloudbase uses 125 m per °C of dew point spread. For hill sites enter the field elevation so surface values are corrected.</li>
+      <li>Data is from <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>, which is free for non-commercial use and serves ECMWF, ICON, GFS and UKMO output. Upper-air data differs by model, so try another if the columns look empty. This is not a substitute for an official briefing.</li>
+    </ul>
+  </section>
+</main>
+</div>
+<noscript>This app needs JavaScript.</noscript>
+
+<script id="core">
+/* Pure calculation code, no DOM access, so it can be tested on its own. */
+const SoarCore = (function () {
+  const LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500];
+  const STOPS = [
+    [0.0, [207, 227, 240]], [0.5, [155, 211, 195]], [1.0, [143, 209, 138]], [1.5, [214, 224, 106]],
+    [2.0, [245, 194, 66]], [2.75, [240, 138, 60]], [3.5, [224, 72, 60]], [4.5, [168, 38, 122]]
+  ];
+  const WMAX = 4.5;
+
+  function rampRGB(w) {
+    if (!(w > 0)) return STOPS[0][1];
+    if (w >= WMAX) return STOPS[STOPS.length - 1][1];
+    for (let i = 1; i < STOPS.length; i++) {
+      if (w <= STOPS[i][0]) {
+        const a = STOPS[i - 1], b = STOPS[i], f = (w - a[0]) / (b[0] - a[0]);
+        return a[1].map((v, k) => Math.round(v + (b[1][k] - v) * f));
+      }
+    }
+    return STOPS[STOPS.length - 1][1];
+  }
+  const rampColor = (w) => 'rgb(' + rampRGB(w).join(',') + ')';
+
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+
+  function buildProfile(hr, i, elev) {
+    const z0 = elev + 2;
+    const temps = [], winds = [], clouds = [];
+    const T2 = hr.temperature_2m && hr.temperature_2m[i];
+    if (num(T2)) temps.push({ z: z0, T: T2 });
+    const s10 = hr.wind_speed_10m && hr.wind_speed_10m[i], d10 = hr.wind_direction_10m && hr.wind_direction_10m[i];
+    if (num(s10) && num(d10)) winds.push({ z: elev + 10, spd: s10, dir: d10 });
+    for (const L of LEVELS) {
+      const z = hr['geopotential_height_' + L + 'hPa'] && hr['geopotential_height_' + L + 'hPa'][i];
+      if (!num(z) || z < elev + 40) continue;
+      const T = hr['temperature_' + L + 'hPa'] && hr['temperature_' + L + 'hPa'][i];
+      const s = hr['wind_speed_' + L + 'hPa'] && hr['wind_speed_' + L + 'hPa'][i];
+      const d = hr['wind_direction_' + L + 'hPa'] && hr['wind_direction_' + L + 'hPa'][i];
+      if (num(T)) temps.push({ z, T });
+      if (num(s) && num(d)) winds.push({ z, spd: s, dir: d });
+      const cc = hr['cloud_cover_' + L + 'hPa'] && hr['cloud_cover_' + L + 'hPa'][i];
+      if (num(cc)) clouds.push({ z, c: cc });
+    }
+    temps.sort((a, b) => a.z - b.z);
+    winds.sort((a, b) => a.z - b.z);
+    clouds.sort((a, b) => a.z - b.z);
+    return { temps, winds, clouds };
+  }
+
+  function thermal(T2, Td, sw, elev, temps) {
+    if (![T2, Td, sw].every(num)) return null;
+    const z0 = elev + 2;
+    const excess = sw < 40 ? 0 : Math.min(4, 0.0045 * sw);
+    const cb = z0 + 125 * Math.max(0, T2 - Td);
+    if (excess < 0.3 || temps.length < 2 || temps[0].z !== z0) {
+      return { z0, cb, top: z0, ceil: z0, w: 0, cu: false, excess };
+    }
+    let top = temps[temps.length - 1].z, prevD = excess, prevZ = temps[0].z;
+    for (let k = 1; k < temps.length; k++) {
+      const z = temps[k].z;
+      const d = (T2 + excess - 0.0098 * (z - z0)) - temps[k].T;
+      if (d <= 0) { top = prevZ + (prevD / (prevD - d)) * (z - prevZ); break; }
+      prevD = d; prevZ = z;
+    }
+    const cu = cb < top;
+    const ceil = cu ? cb : top;
+    const zi = Math.max(0, ceil - z0);
+    const w = zi < 100 ? 0 : Math.cbrt((9.81 / (T2 + 273.15)) * ((0.2 * sw) / 1200) * zi);
+    return { z0, cb, top, ceil, w, cu, excess };
+  }
+
+  function windAt(winds, z) {
+    if (!winds.length) return null;
+    if (z <= winds[0].z) return { spd: winds[0].spd, dir: winds[0].dir };
+    const last = winds[winds.length - 1];
+    if (z >= last.z) return { spd: last.spd, dir: last.dir };
+    for (let k = 1; k < winds.length; k++) {
+      if (z <= winds[k].z) {
+        const a = winds[k - 1], b = winds[k], f = (z - a.z) / (b.z - a.z);
+        const uv = (w) => [-w.spd * Math.sin(w.dir * Math.PI / 180), -w.spd * Math.cos(w.dir * Math.PI / 180)];
+        const ua = uv(a), ub = uv(b);
+        const u = ua[0] + (ub[0] - ua[0]) * f, v = ua[1] + (ub[1] - ua[1]) * f;
+        return { spd: Math.hypot(u, v), dir: (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360 };
+      }
+    }
+    return null;
+  }
+
+  /* Rough check for the ingredients of mountain wave: strong flow aloft, speed rising with height,
+     steady direction and a stable layer low down. It cannot say where the lift is. */
+  function wavePotential(winds, temps, elev) {
+    if (winds.length < 3 || temps.length < 3) return null;
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const w1 = windAt(winds, 1500), w3 = windAt(winds, 3000), d1 = windAt(winds, 1000), d4 = windAt(winds, 4000);
+    let shear = Math.abs(d4.dir - d1.dir) % 360;
+    if (shear > 180) shear = 360 - shear;
+    let lapse = null;
+    for (let k = 1; k < temps.length; k++) {
+      const a = temps[k - 1], b = temps[k];
+      if (a.z < elev + 300 || b.z > 3000 || b.z - a.z < 100) continue;
+      const l = ((a.T - b.T) / (b.z - a.z)) * 1000;
+      if (lapse === null || l < lapse) lapse = l;
+    }
+    const A = clamp((w3.spd - 10) / 10), B = clamp((w3.spd - w1.spd + 2) / 6);
+    const Cc = clamp((60 - shear) / 30), D = lapse === null ? 0 : clamp((6 - lapse) / 4);
+    const score = A < 0.2 ? 0 : 0.35 * A + 0.2 * B + 0.2 * Cc + 0.25 * D;
+    return { score, w1: w1.spd, w3: w3.spd, shear, lapse };
+  }
+
+  function buildHours(json) {
+    const hr = json.hourly, elev = Number.isFinite(json.elevation) ? json.elevation : 0;
+    const out = [];
+    for (let i = 0; i < hr.time.length; i++) {
+      const t = hr.time[i];
+      const p = buildProfile(hr, i, elev);
+      out.push({
+        t, day: t.slice(0, 10), hour: +t.slice(11, 13),
+        T2: hr.temperature_2m[i], Td: hr.dew_point_2m[i], sw: hr.shortwave_radiation[i],
+        cl: hr.cloud_cover_low[i], cm: hr.cloud_cover_mid[i], ch: hr.cloud_cover_high[i],
+        rain: hr.precipitation[i], pop: hr.precipitation_probability ? hr.precipitation_probability[i] : null, temps: p.temps, winds: p.winds, clouds: p.clouds, wave: wavePotential(p.winds, p.temps, elev),
+        calc: thermal(hr.temperature_2m[i], hr.dew_point_2m[i], hr.shortwave_radiation[i], elev, p.temps)
+      });
+    }
+    return { elev, offset: json.utc_offset_seconds || 0, hours: out };
+  }
+
+  /* ---------- NOTAMs: reading the NATS PIB XML and finding what is near a site ---------- */
+  const NOTAM_LABELS = {
+    WA: 'Air display', WB: 'Aerobatics', WC: 'Captive balloon or kite', WD: 'Demolition of explosives', WE: 'Exercises',
+    WF: 'Air refuelling', WG: 'Glider flying', WJ: 'Banner or target towing', WP: 'Parachuting or para/hang gliding',
+    WU: 'Unmanned aircraft', WV: 'Formation flight', WZ: 'Model flying',
+    RD: 'Danger area', RP: 'Prohibited area', RR: 'Restricted area', RT: 'Temporary restricted area',
+    OB: 'Obstacle', OL: 'Obstacle lights'
+  };
+  function noticeKind(code) {
+    const f = String(code || '').toUpperCase()[0];
+    return f === 'R' || f === 'W' ? 'warn' : f === 'A' ? 'airspace' : f === 'O' ? 'obstacle' : 'other';
+  }
+  function noticeLabel(code) {
+    const c = String(code || '').toUpperCase();
+    const k = noticeKind(c);
+    return (NOTAM_LABELS[c] || { warn: 'Warning or restriction', airspace: 'Airspace', obstacle: 'Obstacle', other: 'Other' }[k]) + (c ? ' (' + c + ')' : '');
+  }
+  function xmlText(s) {
+    return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
+  }
+  function xmlTag(block, names) {
+    for (const n of names) {
+      const m = new RegExp('<' + n + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + n + '>', 'i').exec(block);
+      if (m) return xmlText(m[1]);
+    }
+    return '';
+  }
+  function parseCoord(str) {
+    const m = /(\d{2})(\d{2})(\d{2})?([NS])\s*[\/ ]?\s*(\d{3})(\d{2})(\d{2})?([EW])/.exec(String(str || '').replace(/\s+/g, ''));
+    if (!m) return null;
+    const lat = (+m[1] + +m[2] / 60 + (m[3] ? +m[3] / 3600 : 0)) * (m[4] === 'S' ? -1 : 1);
+    const lon = (+m[5] + +m[6] / 60 + (m[7] ? +m[7] / 3600 : 0)) * (m[8] === 'W' ? -1 : 1);
+    return { lat, lon };
+  }
+  function parseValidity(str) {
+    const m = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(String(str || '').trim());
+    return m ? Date.UTC(2000 + +m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  }
+
+  /* Boundaries written in the text, such as WI AREA BOUNDED BY 522852N 0015455W - 522856N 0015446W - ... */
+  const COORD_RE = '\\d{4}(?:\\d{2})?[NS]\\s*\\d{5}(?:\\d{2})?[EW]';
+  const RUN_RE = '(?:' + COORD_RE + '\\s*(?:-|TO|THEN)\\s*)+' + COORD_RE;
+  function parsePolys(text) {
+    const out = [], one = new RegExp(COORD_RE, 'g');
+    (String(text || '').match(new RegExp(RUN_RE, 'g')) || []).forEach((run) => {
+      const pts = [];
+      (run.match(one) || []).forEach((c) => { const p = parseCoord(c); if (p) pts.push([p.lat, p.lon]); });
+      if (pts.length >= 3) out.push(pts);
+    });
+    return out;
+  }
+  /* The text as a person reads it: long coordinate lists are replaced by a short note and links are tidied. */
+  function displayText(text) {
+    return String(text || '')
+      .replace(new RegExp(RUN_RE, 'g'), (m) => {
+        const n = (m.match(/[NS]\s*\d{5}/g) || []).length;
+        return n >= 3 ? '[boundary of ' + n + ' points, drawn on the map]' : m;
+      })
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1');
+  }
+  /* A place name from the text, such as (BIRMINGHAM, WEST MIDLANDS). */
+  function placeOf(text) {
+    const skip = /^(TEMPORARY|PERMANENT|PROVISIONAL|EST|PERM|UTC|LOCAL|ACTIVE|ACTIVATED)$/;
+    let best = '';
+    (String(text || '').match(/\(([A-Z][A-Z .,'\/-]{3,60})\)/g) || []).forEach((g) => {
+      const t = g.slice(1, -1).trim();
+      if (!skip.test(t) && t.length > best.length) best = t;
+    });
+    return best;
+  }
+
+  function parseNotamXml(text) {
+    const out = [], re = /<Notam(?:\s[^>]*)?>([\s\S]*?)<\/Notam>/gi;
+    let m;
+    while ((m = re.exec(text))) {
+      const b = m[1];
+      const etext = xmlTag(b, ['ItemE']);
+      let pos = parseCoord(xmlTag(b, ['Coordinates', 'Coords', 'Centre', 'Center']));
+      if (!pos) { const cm = /(\d{4,6}[NS])\s*(\d{5,7}[EW])/.exec(b); if (cm) pos = parseCoord(cm[1] + cm[2]); }
+      let r = parseFloat(xmlTag(b, ['Radius']));
+      if (!Number.isFinite(r)) { const rm = /[NS]\s*\d{5,7}[EW](\d{3})\b/.exec(b); r = rm ? +rm[1] : 1; }
+      let code = xmlTag(b, ['Code23']);
+      if (!code) { const qm = /\bQ([A-Z]{2})[A-Z]{2}\b/.exec(b); code = qm ? qm[1] : ''; }
+      const end = xmlTag(b, ['EndValidity']);
+      const ser = xmlTag(b, ['Series']), num = xmlTag(b, ['Number']), yr = xmlTag(b, ['Year']);
+      const polys = parsePolys(etext);
+      let cen = null;
+      if (polys.length) {
+        let a = 0, o = 0, c = 0;
+        polys.forEach((p) => p.forEach((q) => { a += q[0]; o += q[1]; c++; }));
+        cen = { lat: a / c, lon: o / c };
+        if (!pos) pos = cen;
+      }
+      out.push({
+        id: ser && num ? ser + num + '/' + yr : xmlTag(b, ['NOF']), office: xmlTag(b, ['NOF']),
+        code: code.toUpperCase(), lat: pos ? pos.lat : null, lon: pos ? pos.lon : null, rNM: r,
+        polys: polys, cen: cen, line: /\b(CENTRE\s?LINE|CENTERLINE|ALONG|ROUTE|CORRIDOR)\b/i.test(etext),
+        from: parseValidity(xmlTag(b, ['StartValidity'])), to: parseValidity(end), perm: /PERM/i.test(end), est: /EST/i.test(end),
+        loc: xmlTag(b, ['ItemA']), sched: xmlTag(b, ['ItemD']), text: etext, place: placeOf(etext),
+        lower: xmlTag(b, ['ItemF']), upper: xmlTag(b, ['ItemG'])
+      });
+    }
+    return out;
+  }
+
+  /* Item D schedules such as FRI SAT 1400-2300, MON-FRI 0700-1700 or DAILY 0800-1600, all in UTC.
+     Anything else (dates, sunrise or sunset) comes back as unknown and the notice is kept. */
+  const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  function parseSchedule(d) {
+    let rest = String(d || '').toUpperCase().trim();
+    if (!rest) return { kind: 'always' };
+    const days = new Set(), ranges = [];
+    let anyDay = false, daily = false;
+    rest = rest.replace(/\b(MON|TUE|WED|THU|FRI|SAT|SUN)\s*-\s*(MON|TUE|WED|THU|FRI|SAT|SUN)\b/g, (m, a, b) => {
+      let i = DOW.indexOf(a); const j = DOW.indexOf(b); anyDay = true;
+      for (let k = 0; k < 8; k++) { days.add(DOW[i]); if (i === j) break; i = (i + 1) % 7; }
+      return ' ';
+    });
+    rest = rest.replace(/\b(MON|TUE|WED|THU|FRI|SAT|SUN)\b/g, (m) => { days.add(m); anyDay = true; return ' '; });
+    rest = rest.replace(/\b(DAILY|DLY)\b/g, () => { daily = true; return ' '; });
+    let bad = false;
+    rest = rest.replace(/\b(\d{2})(\d{2})\s*-\s*(\d{2})(\d{2})\b/g, (m, a, b, c, e) => {
+      if (+a > 24 || +c > 24 || +b > 59 || +e > 59) bad = true;
+      ranges.push([+a * 60 + +b, +c * 60 + +e]); return ' ';
+    });
+    rest = rest.replace(/\b(H24|AND)\b|[,;.]/g, ' ');
+    if (bad || rest.trim()) return { kind: 'unknown' };
+    return { kind: 'sched', days: anyDay && !daily ? days : null, ranges };
+  }
+  /* Is the notice in force at some point in [startMs, endMs)? Returns {on, unknown}. */
+  function activeIn(n, startMs, endMs) {
+    if (n.from !== null && n.from >= endMs) return { on: false };
+    if (n.to !== null && n.to < startMs) return { on: false };
+    const s = parseSchedule(n.sched);
+    if (s.kind === 'always') return { on: true };
+    if (s.kind === 'unknown') return { on: true, unknown: true };
+    const rs = s.ranges.length ? s.ranges : [[0, 1440]];
+    for (let d = Math.floor(startMs / 864e5) * 864e5 - 864e5; d < endMs; d += 864e5) {
+      if (s.days && !s.days.has(DOW[new Date(d).getUTCDay()])) continue;
+      for (const r of rs) {
+        const a = d + r[0] * 6e4, b = d + (r[1] <= r[0] ? r[1] + 1440 : r[1]) * 6e4;
+        if (a < endMs && b > startMs && (n.from === null || b > n.from) && (n.to === null || a < n.to)) return { on: true };
+      }
+    }
+    return { on: false };
+  }
+
+  function haversineKm(la1, lo1, la2, lo2) {
+    const R = 6371, rad = Math.PI / 180, dLa = (la2 - la1) * rad, dLo = (lo2 - lo1) * rad;
+    const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * rad) * Math.cos(la2 * rad) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function bearingDeg(la1, lo1, la2, lo2) {
+    const rad = Math.PI / 180, dLo = (lo2 - lo1) * rad;
+    const y = Math.sin(dLo) * Math.cos(la2 * rad);
+    const x = Math.cos(la1 * rad) * Math.sin(la2 * rad) - Math.sin(la1 * rad) * Math.cos(la2 * rad) * Math.cos(dLo);
+    return (Math.atan2(y, x) / rad + 360) % 360;
+  }
+  /* Distance in km from a site to the nearest edge of any boundary, 0 when the site is inside one. */
+  function polyDistKm(polys, lat, lon) {
+    const cl = Math.cos(lat * Math.PI / 180);
+    let best = Infinity;
+    polys.forEach((poly) => {
+      const q = poly.map((p) => [(p[1] - lon) * 111.2 * cl, (p[0] - lat) * 111.2]);
+      let inside = false;
+      for (let i = 0, j = q.length - 1; i < q.length; j = i++) {
+        if ((q[i][1] > 0) !== (q[j][1] > 0) && 0 < ((q[j][0] - q[i][0]) * (0 - q[i][1])) / (q[j][1] - q[i][1]) + q[i][0]) inside = !inside;
+      }
+      if (inside) { best = 0; return; }
+      for (let i = 0; i < q.length; i++) {
+        const a = q[i], b = q[(i + 1) % q.length], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
+        const t = L ? Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / L)) : 0;
+        best = Math.min(best, Math.hypot(a[0] + t * dx, a[1] + t * dy));
+      }
+    });
+    return best;
+  }
+  function polyAreaKm2(polys, lat) {
+    const cl = Math.cos(lat * Math.PI / 180);
+    let total = 0;
+    polys.forEach((poly) => {
+      const q = poly.map((p) => [p[1] * 111.2 * cl, p[0] * 111.2]);
+      let s = 0;
+      for (let i = 0; i < q.length; i++) { const a = q[i], b = q[(i + 1) % q.length]; s += a[0] * b[1] - b[0] * a[1]; }
+      total += Math.abs(s) / 2;
+    });
+    return total;
+  }
+  /* Notices in force during [startMs, endMs) that reach within kmRadius of the site.
+     Radius 999 NM means a whole-region notice: kept, but flagged wide and not drawn. */
+  function nearbyNotams(list, lat, lon, kmRadius, startMs, endMs) {
+    const out = [];
+    for (const n of list) {
+      if (n.lat === null) continue;
+      const act = activeIn(n, startMs, endMs);
+      if (!act.on) continue;
+      const hasPoly = !!(n.polys && n.polys.length), c = n.cen || { lat: n.lat, lon: n.lon };
+      let dist, rKm = 0, wide = false, area;
+      if (hasPoly) {
+        dist = polyDistKm(n.polys, lat, lon);
+        if (dist > kmRadius) continue;
+        area = polyAreaKm2(n.polys, lat);
+      } else {
+        dist = haversineKm(lat, lon, n.lat, n.lon); rKm = n.rNM * 1.852; wide = n.rNM >= 999;
+        if (!wide && dist - rKm > kmRadius) continue;
+        area = Math.PI * rKm * rKm;
+      }
+      out.push(Object.assign({}, n, { dist, rKm, wide, poly: hasPoly, big: !wide && rKm > 100, area, clat: c.lat, clon: c.lon,
+        bearing: bearingDeg(lat, lon, c.lat, c.lon), schedUnknown: !!act.unknown }));
+    }
+    out.sort((a, b) => (a.wide - b.wide) || (a.dist - b.dist));
+    return out;
+  }
+  /* A limit such as SFC, 2500FT AMSL, 1500FT AGL or FL065, as feet above sea level. */
+  function limitFt(txt, siteElevFt) {
+    const t = String(txt || '').toUpperCase();
+    if (!t) return null;
+    if (/\b(SFC|GND|SURFACE)\b/.test(t)) return 0;
+    let m = /FL\s*(\d{2,3})/.exec(t);
+    if (m) return +m[1] * 100;
+    m = /(\d+)\s*FT\s*(AGL|AMSL|ALT)?/.exec(t);
+    if (m) return m[2] === 'AGL' ? +m[1] + siteElevFt : +m[1];
+    m = /(\d+)\s*M\s*(AGL|AMSL)\b/.exec(t);
+    if (m) return +m[1] * 3.28084 + (m[2] === 'AGL' ? siteElevFt : 0);
+    return null;
+  }
+  function coordString(lat, lon, seconds) {
+    const f = (v, w, pos, neg) => {
+      const a = Math.abs(v); let d = Math.floor(a), mi = Math.floor((a - d) * 60), s = Math.round(((a - d) * 60 - mi) * 60);
+      if (!seconds) { mi = Math.round((a - d) * 60); s = 0; }
+      if (s === 60) { s = 0; mi++; }
+      if (mi === 60) { mi = 0; d++; }
+      return String(d).padStart(w, '0') + String(mi).padStart(2, '0') + (seconds ? String(s).padStart(2, '0') : '') + (v >= 0 ? pos : neg);
+    };
+    return f(lat, 2, 'N', 'S') + (seconds ? ' ' : '') + f(lon, 3, 'E', 'W');
+  }
+  /* Invented notices around a site, in the layout of the NATS file, for trying out the display offline. */
+  function makeDemoPib(lat, lon, nowMs) {
+    const val = (ms) => { const s = new Date(ms).toISOString(); return s.slice(2, 4) + s.slice(5, 7) + s.slice(8, 10) + s.slice(11, 13) + s.slice(14, 16); };
+    const off = (north, east) => [lat + north / 111.2, lon + east / (111.2 * Math.cos(lat * Math.PI / 180))];
+    const at = (north, east) => { const p = off(north, east); return coordString(p[0], p[1], false); };
+    const sec = (north, east) => { const p = off(north, east); return coordString(p[0], p[1], true); };
+    const box = [[-6, 26], [-6, 40], [8, 40], [14, 33], [8, 26]].map((p) => sec(p[0], p[1]));
+    const items = [
+      ['0101', 'WU', at(12, -8), 3, 'UNMANNED AIRCRAFT ACTIVITY WITHIN 3NM RADIUS. DEMO ENTRY.', 'SFC', '400FT AGL', 'EGWC', ''],
+      ['0102', 'RD', at(-20, 15), 6, 'DANGER AREA ACTIVE. DEMO ENTRY.', 'SFC', '2500FT AMSL', 'EGTT', ''],
+      ['0103', 'WP', at(5, -25), 2, 'PARACHUTE DROPPING EXERCISE. DEMO ENTRY.', 'SFC', 'FL150', 'EGOS', 'DAILY 0800-1600'],
+      ['0104', 'OB', at(-5, -10), 0.5, 'CRANE 300FT AGL. DEMO ENTRY.', 'SFC', '300FT AGL', 'EGTT', ''],
+      ['0105', 'AH', at(30, 0), 15, 'CONTROLLED AIRSPACE ACTIVATED. DEMO ENTRY.', '3500FT AMSL', 'FL065', 'EGTT', ''],
+      ['0106', 'WU', at(0, 0), 999, 'WIDE AREA UNMANNED AIRCRAFT NOTICE. DEMO ENTRY.', 'SFC', '400FT AGL', 'EGTT', ''],
+      ['0107', 'RT', at(3, 33), 1, 'RESTRICTED AREA (TEMPORARY) INSTALLED FOR UAS ONLY (DEMO TOWN, DEMOSHIRE) WI AREA BOUNDED BY ' + box.concat(box[0]).join(' - ') + '. DEMO ENTRY.', 'SFC', '1500FT AMSL', 'EGBB', 'FRI SAT 1400-2300']
+    ];
+    let x = '<?xml version="1.0" encoding="UTF-8"?><Pib><FIRSection><ADSection><NotamList>';
+    items.forEach((i) => {
+      x += '<Notam OriginalMessage="false" PIBSection="AD"><NOF>EGGN</NOF><Series>J</Series><Number>' + i[0] + '</Number><Year>26</Year><Type>N</Type>' +
+        '<QLine><FIR>EGTT</FIR><Code23>' + i[1] + '</Code23></QLine><Coordinates>' + i[2] + '</Coordinates><Radius>' + i[3] + '</Radius>' +
+        '<ItemA>' + i[7] + '</ItemA><StartValidity>' + val(nowMs - 10 * 864e5) + '</StartValidity><EndValidity>' + val(nowMs + 25 * 864e5) + '</EndValidity>' +
+        (i[8] ? '<ItemD>' + i[8] + '</ItemD>' : '') + '<ItemE>' + i[4] + '</ItemE><ItemF>' + i[5] + '</ItemF><ItemG>' + i[6] + '</ItemG></Notam>';
+    });
+    return x + '</NotamList></ADSection></FIRSection></Pib>';
+  }
+
+  /* Synthetic forecast in the same shape as the API response, for offline use. */
+  function makeDemo(y, m, d) {
+    const elev = 120, base = Date.UTC(y, m - 1, d);
+    const hr = { time: [] };
+    const names = ['temperature_2m', 'dew_point_2m', 'shortwave_radiation', 'cloud_cover_low', 'cloud_cover_mid',
+      'cloud_cover_high', 'precipitation', 'precipitation_probability', 'wind_speed_10m', 'wind_direction_10m'];
+    names.forEach((n) => { hr[n] = []; });
+    LEVELS.forEach((L) => ['temperature', 'wind_speed', 'wind_direction', 'geopotential_height', 'cloud_cover'].forEach((v) => { hr[v + '_' + L + 'hPa'] = []; }));
+    const amps = [0.9, 1, 0.7, 0.35, 0.85, 1, 0.6];
+    for (let k = 0; k < 7 * 24; k++) {
+      const day = Math.floor(k / 24), h = k % 24, amp = amps[day % 7];
+      hr.time.push(new Date(base + k * 3600e3).toISOString().slice(0, 16));
+      const sun = h > 5.5 && h < 19.5 ? Math.pow(Math.sin(Math.PI * (h - 5.5) / 14), 1.3) : 0;
+      const sw = 800 * amp * sun;
+      const T2 = 7 + 9 * amp * (h > 7 && h < 21 ? Math.sin(Math.PI * (h - 7) / 14) : 0);
+      const Td = 5 + (day % 3) * 1.5;
+      const lapse = 7.6 + 0.5 * (day % 3);
+      hr.temperature_2m.push(T2); hr.dew_point_2m.push(Td); hr.shortwave_radiation.push(sw);
+      hr.cloud_cover_low.push(Math.round(Math.min(100, 70 * (1 - amp) + (sw > 300 ? 30 : 5))));
+      hr.cloud_cover_mid.push(Math.round(30 * (1 - amp)));
+      hr.cloud_cover_high.push(Math.round(20 + 10 * Math.sin(day)));
+      hr.precipitation.push(day === 3 && h >= 13 && h <= 15 ? 0.6 : 0);
+      hr.precipitation_probability.push(day === 3 ? (h >= 11 && h <= 16 ? 70 : 25) : 5);
+      hr.wind_speed_10m.push(6 + day); hr.wind_direction_10m.push(235 + 8 * day);
+      LEVELS.forEach((L) => {
+        const z = 44330 * (1 - Math.pow(L / 1013.25, 0.19)) + 15 * Math.sin(day);
+        const dz = (z - elev) / 1000;
+        hr['geopotential_height_' + L + 'hPa'].push(z);
+        hr['temperature_' + L + 'hPa'].push(T2 - 1 - (dz < 3 ? lapse * dz : lapse * 3 + 6 * (dz - 3)));
+        hr['wind_speed_' + L + 'hPa'].push(6 + 3.5 * z / 1000 + day);
+        hr['wind_direction_' + L + 'hPa'].push(235 + 15 * z / 1000 + 8 * day);
+        hr['cloud_cover_' + L + 'hPa'].push(Math.round((z > 3500 && z < 5000 ? 90 * (1 - amp) : z > 1500 && z < 3500 ? 40 * (1 - amp) : 0) * (0.6 + 0.4 * Math.sin(h / 4))));
+      });
+    }
+    return { elevation: elev, utc_offset_seconds: 0, hourly: hr };
+  }
+
+  return { LEVELS, STOPS, WMAX, rampColor, buildProfile, thermal, windAt, wavePotential, buildHours, makeDemo,
+    parseNotamXml, parseCoord, parsePolys, displayText, placeOf, parseSchedule, activeIn, polyDistKm, nearbyNotams,
+    noticeKind, noticeLabel, limitFt, haversineKm, coordString, makeDemoPib };
+})();
+if (typeof module !== 'undefined') module.exports = SoarCore;
+</script>
+
+<script id="ui">
+(function () {
+  'use strict';
+  const C = SoarCore;
+  const $ = (id) => document.getElementById(id);
+  const FT = 3.28084, KT = 1.94384, HOURS = []; for (let h = 6; h <= 20; h++) HOURS.push(h);
+  const SITES = [
+    ['Seighford', 52.827922, -2.207805, 98], ['Lasham', 51.187, -1.034], ['London GC, Dunstable', 51.869, -0.543], ['Gransden Lodge', 52.173, -0.108],
+    ['Husbands Bosworth', 52.451, -1.038], ['Bicester', 51.924, -1.132], ['Booker', 51.611, -0.808],
+    ['Nympsfield', 51.703, -2.283], ['Aston Down', 51.712, -2.142], ['Sutton Bank', 54.229, -1.208],
+    ['Portmoak', 56.195, -3.332], ['Aboyne', 57.077, -2.836]
+  ].map((s) => ({ name: s[0], lat: s[1], lon: s[2], elev: s[3] }));
+  const state = { site: SITES[0], custom: null, model: 'best_match', hunit: 'ft', lunit: 'kt', elev: null,
+    data: null, demo: false, day: null, dayHrs: [], sel: 7, updated: '', pib: null,
+    bday: null, bhour: null, tiles: 'osm', mapped: [], pin: null, nsel: null, view: null, wxAt: 0, wxCached: false };
+
+  function save() { try { localStorage.setItem('soar-meteogram', JSON.stringify({ site: state.site, model: state.model, hunit: state.hunit, lunit: state.lunit, elev: state.elev, tiles: state.tiles })); } catch (e) {} }
+  function restore() {
+    try {
+      const s = JSON.parse(localStorage.getItem('soar-meteogram') || 'null');
+      if (!s) return;
+      if (s.site && Number.isFinite(s.site.lat) && Number.isFinite(s.site.lon) && typeof s.site.name === 'string') {
+        const known = SITES.find((x) => x.name === s.site.name);
+        if (known) state.site = known; else { state.site = s.site; state.custom = s.site; }
+      }
+      if (['best_match', 'ecmwf_ifs025', 'icon_seamless', 'gfs_seamless', 'ukmo_seamless', 'meteofrance_seamless'].includes(s.model)) state.model = s.model;
+      if (s.hunit === 'm' || s.hunit === 'ft') state.hunit = s.hunit;
+      if (s.lunit === 'ms' || s.lunit === 'kt') state.lunit = s.lunit;
+      if (Number.isFinite(s.elev)) state.elev = s.elev;
+      if (['osm', 'carto', 'none'].includes(s.tiles)) state.tiles = s.tiles;
+    } catch (e) {}
+  }
+
+  /* unit helpers */
+  const hc = (m) => (state.hunit === 'ft' ? m * FT : m);
+  const hInv = (v) => (state.hunit === 'ft' ? v / FT : v);
+  const lc = (ms) => (state.lunit === 'kt' ? ms * KT : ms);
+  const lUnit = () => (state.lunit === 'kt' ? 'kt' : 'm/s');
+  const fmtH = (m) => { const r = state.hunit === 'ft' ? 100 : 10; return (Math.round(hc(m) / r) * r).toLocaleString('en-GB') + ' ' + state.hunit; };
+  const fmtL = (ms) => lc(ms).toFixed(1) + ' ' + lUnit();
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const fmtWind = (w) => { if (!w) return 'n/a'; let d = Math.round(w.dir / 10) * 10; if (d === 0) d = 360; return pad3(d % 360 === 0 ? 360 : d) + '° / ' + Math.round(w.spd) + ' kt'; };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const dayLabel = (k) => new Date(k + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+  /* data */
+  function buildUrl() {
+    const surf = ['temperature_2m', 'dew_point_2m', 'shortwave_radiation', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high', 'precipitation', 'precipitation_probability', 'wind_speed_10m', 'wind_direction_10m'];
+    const lev = [];
+    C.LEVELS.forEach((L) => ['temperature', 'wind_speed', 'wind_direction', 'geopotential_height', 'cloud_cover'].forEach((v) => lev.push(v + '_' + L + 'hPa')));
+    const p = new URLSearchParams({
+      latitude: state.site.lat.toFixed(4), longitude: state.site.lon.toFixed(4),
+      hourly: surf.concat(lev).join(','), wind_speed_unit: 'kn', timezone: 'auto', forecast_days: '7'
+    });
+    if (state.model !== 'best_match') p.set('models', state.model);
+    const el = state.elev !== null ? state.elev : state.site.elev;
+    if (Number.isFinite(el)) p.set('elevation', String(el));
+    return 'https://api.open-meteo.com/v1/forecast?' + p.toString();
+  }
+
+  async function fetchForecast() {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const r = await fetch(buildUrl(), { signal: ctl.signal });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.reason || ('Open-Meteo returned status ' + r.status));
+      if (!j.hourly || !j.hourly.time) throw new Error('Unexpected response from Open-Meteo');
+      return j;
+    } finally { clearTimeout(timer); }
+  }
+
+  function setData(json, demo, at, cached) {
+    state.data = C.buildHours(json);
+    state.demo = demo;
+    state.wxAt = at || Date.now(); state.wxCached = !!cached;
+    state.updated = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const days = dayList();
+    const today = localNow().slice(0, 10);
+    pickDay(days.includes(today) ? today : days[0]);
+  }
+
+  async function load() {
+    setStatus('Loading forecast…');
+    try {
+      const j = await fetchForecast(), now = Date.now();
+      cachePut(wxKey(), { at: now, json: j }); pruneWx();
+      setData(j, false, now, false); renderAll();
+    } catch (e) {
+      const c = cacheGet(wxKey());
+      if (c && c.json && c.json.hourly && c.json.hourly.time) { setData(c.json, false, c.at, true); renderAll(); }
+      else showError(e);
+    }
+  }
+
+  function loadDemo() {
+    const n = new Date();
+    setData(C.makeDemo(n.getFullYear(), n.getMonth() + 1, n.getDate()), true);
+    renderAll();
+  }
+
+  function localNow() {
+    const off = state.data ? state.data.offset : 0;
+    return new Date(Date.now() + off * 1000).toISOString().slice(0, 16);
+  }
+  function dayList() {
+    const seen = []; state.data.hours.forEach((h) => { if (!seen.includes(h.day)) seen.push(h.day); });
+    return seen;
+  }
+  function hoursOf(day) {
+    const by = {}; state.data.hours.forEach((h) => { if (h.day === day) by[h.hour] = h; });
+    return HOURS.map((h) => by[h] || null);
+  }
+  function dayStats(day) {
+    let w = 0, ceil = 0;
+    hoursOf(day).forEach((h) => { if (h && h.calc) { w = Math.max(w, h.calc.w); if (h.calc.w > 0) ceil = Math.max(ceil, h.calc.ceil); } });
+    return { w, ceil };
+  }
+  function pickDay(day) {
+    state.day = day; state.bday = day; state.view = null; state.dayHrs = hoursOf(day);
+    let best = 7, bw = -1;
+    state.dayHrs.forEach((h, i) => { if (h && h.calc && h.calc.w > bw) { bw = h.calc.w; best = i; } });
+    state.sel = bw > 0 ? best : 7;
+  }
+
+  /* status and errors */
+  function setStatus(msg, warn) {
+    const s = $('status'); s.className = 'status' + (warn ? ' warn' : ''); s.textContent = msg;
+  }
+  function showError(e) {
+    const s = $('status'); s.className = 'status warn'; s.textContent = '';
+    const t = document.createElement('span'); t.textContent = 'Could not load the forecast (' + (e && e.name === 'AbortError' ? 'timed out' : (e && e.message) || 'network error') + ').';
+    const a = document.createElement('button'); a.className = 'btn'; a.type = 'button'; a.textContent = 'Retry'; a.addEventListener('click', load);
+    const b = document.createElement('button'); b.className = 'btn alt'; b.type = 'button'; b.textContent = 'Show demo data'; b.addEventListener('click', loadDemo);
+    const hint = document.createElement('span'); hint.textContent = 'If this page is open inside a preview pane or app, open the saved file in Chrome, Safari or Firefox instead.';
+    s.append(t, a, b, hint);
+  }
+  function updateStatus() {
+    const d = state.data;
+    const hasUpper = d.hours.some((h) => h.temps.length >= 3);
+    if (state.wxCached) {
+      const b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = 'Try again'; b.addEventListener('click', load);
+      const s = $('status'); s.className = 'status warn'; s.textContent = 'No connection. Showing the forecast saved at ' + hhmm(state.wxAt) + ' (' + ageTxt(Date.now() - state.wxAt) + '). It may be out of date. '; s.append(b);
+      return;
+    }
+    if (state.demo) { setStatus('Demo data. These are synthetic numbers for trying out the display, not a forecast.', true); return; }
+    if (!hasUpper) { setStatus('This model returned no upper-air data for this site, so thermal heights cannot be worked out. Choose another model.', true); return; }
+    const m = $('model').selectedOptions[0].textContent;
+    setStatus(m + ' · ' + state.site.lat.toFixed(2) + '°, ' + state.site.lon.toFixed(2) + '° · elevation ' + Math.round(d.elev) + ' m · fetched ' + hhmm(state.wxAt) + ' (' + ageTxt(Date.now() - state.wxAt) + ')', Date.now() - state.wxAt > 3 * 3600e3);
+  }
+
+  /* day chips */
+  function renderDays() {
+    const box = $('days'); box.textContent = '';
+    dayList().forEach((k) => {
+      const st = dayStats(k);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'day';
+      b.setAttribute('aria-pressed', k === state.day ? 'true' : 'false');
+      const t = document.createElement('b'); t.textContent = dayLabel(k);
+      const s = document.createElement('span');
+      s.textContent = st.w > 0 ? fmtL(st.w) + ' · ' + fmtH(st.ceil) : 'No usable lift';
+      const bar = document.createElement('i'); bar.style.background = C.rampColor(st.w);
+      b.append(t, s, bar);
+      b.addEventListener('click', () => { pickDay(k); renderAll(); });
+      box.append(b);
+    });
+  }
+
+  /* wind barb path, staff pointing up, feathers on the right */
+  function barbPath(spd) {
+    const L = 15; let s = Math.round(spd / 5) * 5;
+    if (s < 5) return null;
+    let d = 'M0 0V' + (-L), y = -L;
+    const fl = Math.floor(s / 50); s -= fl * 50;
+    const fu = Math.floor(s / 10); s -= fu * 10;
+    for (let i = 0; i < fl; i++) { d += 'M0 ' + y + 'L7 ' + (y + 2.5) + 'L0 ' + (y + 5) + 'Z'; y += 5; }
+    for (let i = 0; i < fu; i++) { d += 'M0 ' + y + 'L7 ' + (y - 3); y += 3; }
+    if (s >= 5) { if (!fl && !fu) y += 3; d += 'M0 ' + y + 'L3.5 ' + (y - 1.5); }
+    return d;
+  }
+
+  /* runs of adjacent pressure levels holding 30% cloud or more, as one layer each */
+  function cloudGroups(h) {
+    const out = []; let cur = null;
+    (h.clouds || []).forEach((l) => {
+      if (l.c >= 30) {
+        if (cur && l.z - cur.last < 2500) { cur.zs.push(l.z); cur.max = Math.max(cur.max, l.c); cur.last = l.z; }
+        else { cur = { zs: [l.z], max: l.c, last: l.z }; out.push(cur); }
+      } else cur = null;
+    });
+    return out.map((g) => ({ z: g.zs.reduce((a, b) => a + b, 0) / g.zs.length, c: g.max, lo: g.zs[0], hi: g.zs[g.zs.length - 1] }));
+  }
+
+  function waveLabel(w) { return !w ? 'n/a' : w.score >= 0.75 ? 'High' : w.score >= 0.5 ? 'Moderate' : w.score >= 0.3 ? 'Low' : 'None'; }
+
+  /* chart */
+  let geo = null;
+  function drawChart() {
+    const wrap = $('chartwrap');
+    if (!state.data) { wrap.textContent = ''; return; }
+    const hrs = state.dayHrs, n = HOURS.length;
+    const W = Math.max(300, Math.floor(wrap.clientWidth || 640));
+    const LM = 46, RM = 8, T = 82, CH = W < 520 ? 300 : 360, BM = 24, H = T + CH + BM;
+    const cw = (W - LM - RM) / n, px = (i) => LM + i * cw;
+    const ground = state.data.elev;
+    const step = state.hunit === 'ft' ? 1000 : 500;
+    let maxC = hc(ground);
+    hrs.forEach((h) => { if (h && h.calc && h.calc.w > 0) maxC = Math.max(maxC, hc(h.calc.ceil)); });
+    const ymin = Math.max(0, Math.floor((hc(ground) - step * 0.6) / step) * step);
+    const ymax = Math.max(ymin + 4 * step, state.hunit === 'ft' ? 10000 : 3000, Math.ceil((maxC + step * 0.5) / step) * step);
+    const py = (zm) => T + CH * (1 - (hc(zm) - ymin) / (ymax - ymin));
+    const gy = py(ground);
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Meteogram for ' + esc(dayLabel(state.day)) + '"><defs><symbol id="cld" viewBox="0 0 24 14"><path d="M6.5 13.2A4.2 4.2 0 0 1 6 4.9 5.8 5.8 0 0 1 16.9 4a4.6 4.6 0 0 1 .9 9.2z" stroke-linejoin="round"/></symbol>';
+    hrs.forEach((h, i) => {
+      if (h && h.calc && h.calc.w > 0) {
+        const c = C.rampColor(h.calc.w);
+        s += '<linearGradient id="g' + i + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c + '" stop-opacity=".55"/><stop offset="1" stop-color="' + c + '"/></linearGradient>';
+      }
+    });
+    s += '</defs>';
+
+    /* cloud and rain strips */
+    const strips = [['ch', 'High'], ['cm', 'Mid'], ['cl', 'Low']];
+    strips.forEach((r, k) => {
+      const y = 2 + k * 11;
+      s += '<text class="axl" x="' + (LM - 6) + '" y="' + (y + 8) + '" text-anchor="end">' + r[1] + '</text>';
+      s += '<rect x="' + LM + '" y="' + y + '" width="' + (W - LM - RM) + '" height="9" fill="var(--plot)"/>';
+      hrs.forEach((h, i) => { if (h && Number.isFinite(h[r[0]])) s += '<rect x="' + (px(i) + .5) + '" y="' + y + '" width="' + (cw - 1) + '" height="9" fill="var(--muted)" fill-opacity="' + (h[r[0]] / 100).toFixed(2) + '"/>'; });
+    });
+    s += '<text class="axl" x="' + (LM - 6) + '" y="' + (2 + 33 + 8) + '" text-anchor="end">Rain mm</text>';
+    s += '<text class="axl" x="' + (LM - 6) + '" y="' + (46 + 8) + '" text-anchor="end">Chance</text>';
+    s += '<rect x="' + LM + '" y="46" width="' + (W - LM - RM) + '" height="9" fill="var(--plot)"/>';
+    hrs.forEach((h, i) => { if (h && Number.isFinite(h.pop) && h.pop > 0) s += '<rect x="' + (px(i) + .5) + '" y="46" width="' + (cw - 1) + '" height="9" fill="var(--accent)" fill-opacity="' + (h.pop / 100).toFixed(2) + '"/>'; });
+    s += '<rect x="' + LM + '" y="35" width="' + (W - LM - RM) + '" height="9" fill="var(--plot)"/>';
+    hrs.forEach((h, i) => { if (h && h.rain > 0.05) s += '<rect x="' + (px(i) + .5) + '" y="35" width="' + (cw - 1) + '" height="9" fill="var(--accent)" fill-opacity="' + Math.min(1, 0.25 + h.rain / 2).toFixed(2) + '"/>'; });
+
+    /* wave potential strip */
+    s += '<text class="axl" x="' + (LM - 6) + '" y="' + (57 + 8) + '" text-anchor="end">Wave</text>';
+    s += '<rect x="' + LM + '" y="57" width="' + (W - LM - RM) + '" height="9" fill="var(--plot)"/>';
+    hrs.forEach((h, i) => { if (h && h.wave && h.wave.score >= 0.3) s += '<rect x="' + (px(i) + .5) + '" y="57" width="' + (cw - 1) + '" height="9" fill="var(--wave)" fill-opacity="' + (0.15 + 0.85 * h.wave.score).toFixed(2) + '"/>'; });
+
+    /* plot area, grid, ground */
+    s += '<rect x="' + LM + '" y="' + T + '" width="' + (W - LM - RM) + '" height="' + CH + '" fill="var(--plot)"/>';
+    for (let v = ymin; v <= ymax; v += step) {
+      const y = T + CH * (1 - (v - ymin) / (ymax - ymin));
+      s += '<line x1="' + LM + '" x2="' + (W - RM) + '" y1="' + y + '" y2="' + y + '" stroke="var(--line)" stroke-width="1"/>';
+      s += '<text class="ax" x="' + (LM - 6) + '" y="' + (y + 3) + '" text-anchor="end">' + v.toLocaleString('en-GB') + '</text>';
+    }
+    s += '<text class="axl" x="2" y="' + (T - 4) + '">' + state.hunit + ' AMSL</text>';
+
+    /* cloud layers from pressure-level cloud cover, and cumulus between cloudbase and thermal top */
+    const clampY = (a, b) => { const t = Math.max(T, a), u = Math.min(T + CH, b); return u - t > 0.5 ? [t, u - t] : null; };
+    hrs.forEach((h, i) => {
+      if (!h) return;
+      const cl = h.clouds || [];
+      cl.forEach((l, k) => {
+        if (l.c < 10) return;
+        const lo = k ? (cl[k - 1].z + l.z) / 2 : Math.max(ground, l.z - (cl[1] ? cl[1].z - l.z : 400) / 2);
+        const hi = k < cl.length - 1 ? (l.z + cl[k + 1].z) / 2 : l.z + (l.z - (cl[k - 1] ? cl[k - 1].z : l.z - 400)) / 2;
+        const r = clampY(py(hi), py(lo));
+        if (r) s += '<rect x="' + (px(i) + .5) + '" y="' + r[0].toFixed(1) + '" width="' + (cw - 1) + '" height="' + r[1].toFixed(1) + '" fill="var(--cloud)" fill-opacity="' + (0.75 * l.c / 100).toFixed(2) + '"/>';
+      });
+      if (h.calc && h.calc.w > 0 && h.calc.cu) {
+        const r = clampY(py(Math.min(h.calc.top, h.calc.cb + 2000)), py(h.calc.cb));
+        if (r) s += '<rect x="' + (px(i) + .5) + '" y="' + r[0].toFixed(1) + '" width="' + (cw - 1) + '" height="' + r[1].toFixed(1) + '" fill="var(--cloud)" fill-opacity="' + (0.2 + 0.5 * (Number.isFinite(h.cl) ? h.cl / 100 : 0.4)).toFixed(2) + '"/>';
+      }
+    });
+
+    /* thermal columns */
+    hrs.forEach((h, i) => {
+      if (!(h && h.calc && h.calc.w > 0)) return;
+      const yc = py(h.calc.ceil);
+      if (gy - yc < 2) return;
+      s += '<rect x="' + (px(i) + .5) + '" y="' + yc + '" width="' + (cw - 1) + '" height="' + (gy - yc) + '" fill="url(#g' + i + ')"/>';
+    });
+
+    /* ceiling and cloudbase lines */
+    const lines = (pred, yOf) => {
+      let d = '', pen = false;
+      hrs.forEach((h, i) => {
+        if (h && h.calc && pred(h.calc)) { d += (pen ? 'L' : 'M') + (px(i) + cw / 2).toFixed(1) + ' ' + yOf(h.calc).toFixed(1); pen = true; } else pen = false;
+      });
+      return d;
+    };
+    const ceilD = lines((c) => c.w > 0, (c) => py(c.ceil));
+    if (ceilD) s += '<path d="' + ceilD + '" fill="none" stroke="var(--halo)" stroke-width="3.5" stroke-linejoin="round"/><path d="' + ceilD + '" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linejoin="round"/>';
+
+    s += '<rect x="' + LM + '" y="' + gy + '" width="' + (W - LM - RM) + '" height="' + Math.max(0, T + CH - gy) + '" fill="var(--ground)"/>';
+
+    /* cloud icons at the centre of each layer holding 40% cover or more */
+    const iskip = cw < 26 ? 2 : 1;
+    hrs.forEach((h, i) => {
+      if (!h || i % iskip !== (iskip === 2 ? 1 : 0)) return;
+      cloudGroups(h).forEach((g) => {
+        if (g.c < 40) return;
+        const iw = Math.min(22, cw - 2), ih = iw * 14 / 24, y = py(g.z) - ih / 2;
+        if (y < T || y + ih > T + CH) return;
+        s += '<use href="#cld" x="' + (px(i) + cw / 2 - iw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + iw.toFixed(1) + '" height="' + ih.toFixed(1) + '" fill="#fff" fill-opacity="' + (0.55 + 0.45 * g.c / 100).toFixed(2) + '" stroke="var(--ink)" stroke-width="1.4"/>';
+      });
+    });
+
+    /* wind barbs */
+    const skip = cw < 26 ? 2 : 1;
+    hrs.forEach((h, i) => {
+      if (!h || !h.winds.length || i % skip !== (skip === 2 ? 1 : 0)) return;
+      for (let v = Math.ceil((hc(ground) + step * 0.35) / step) * step; v <= ymax - step * 0.25; v += step) {
+        const zm = hInv(v), w = C.windAt(h.winds, zm);
+        if (!w || zm > h.winds[h.winds.length - 1].z + 50) continue;
+        const x = px(i) + cw / 2, y = T + CH * (1 - (v - ymin) / (ymax - ymin));
+        const d = barbPath(w.spd);
+        s += '<g transform="translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') rotate(' + w.dir.toFixed(0) + ')">';
+        if (d) s += '<path d="' + d + '" fill="var(--halo)" stroke="var(--halo)" stroke-width="3.2" stroke-linejoin="round"/><path d="' + d + '" fill="var(--ink)" stroke="var(--ink)" stroke-width="1.1" stroke-linejoin="round"/>';
+        else s += '<circle r="2.6" fill="none" stroke="var(--halo)" stroke-width="3"/><circle r="2.6" fill="none" stroke="var(--ink)" stroke-width="1.1"/>';
+        s += '</g>';
+      }
+    });
+
+    /* cloudbase on cumulus hours, drawn above the barbs */
+    const cbD = lines((c) => c.w > 0 && c.cu, (c) => py(c.cb));
+    if (cbD) {
+      s += '<path d="' + cbD + '" fill="none" stroke="var(--ink)" stroke-width="4.4" stroke-linejoin="round" stroke-linecap="round"/><path d="' + cbD + '" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+      hrs.forEach((h, i) => { if (h && h.calc && h.calc.w > 0 && h.calc.cu) s += '<circle cx="' + (px(i) + cw / 2).toFixed(1) + '" cy="' + py(h.calc.cb).toFixed(1) + '" r="3.2" fill="#fff" stroke="var(--ink)" stroke-width="1.2"/>'; });
+    }
+
+    /* hour axis */
+    const lab = cw < 26 ? 2 : 1;
+    HOURS.forEach((hh, i) => { if (i % lab === 0) s += '<text class="ax" x="' + (px(i) + cw / 2) + '" y="' + (T + CH + 15) + '" text-anchor="middle">' + pad3(hh).slice(1) + '</text>'; });
+
+    /* current time */
+    if (state.day === localNow().slice(0, 10)) {
+      const nowStr = localNow(), fh = +nowStr.slice(11, 13) + +nowStr.slice(14, 16) / 60;
+      if (fh >= HOURS[0] && fh <= HOURS[n - 1] + 1) {
+        const x = LM + (fh - HOURS[0]) * cw;
+        s += '<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + T + '" y2="' + (T + CH) + '" stroke="var(--ink)" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>';
+      }
+    }
+
+    /* selection highlight and pointer surface */
+    s += '<rect id="hl" x="0" y="0" width="' + cw + '" height="' + (T + CH) + '" fill="var(--accent)" fill-opacity=".1" stroke="var(--accent)" stroke-width="1.5" pointer-events="none"/>';
+    s += '<rect id="hit" x="' + LM + '" y="0" width="' + (W - LM - RM) + '" height="' + (T + CH) + '" fill="transparent" style="touch-action:pan-y;cursor:crosshair"/>';
+    s += '</svg>';
+    wrap.innerHTML = s;
+    geo = { LM, cw, n, W, RM };
+    moveHighlight();
+    const hit = $('hit');
+    const pick = (e) => {
+      const r = hit.getBoundingClientRect();
+      const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - r.left) / r.width) * n)));
+      if (i !== state.sel) { state.sel = i; moveHighlight(); renderReadout(); }
+    };
+    hit.addEventListener('pointerdown', pick);
+    hit.addEventListener('pointermove', pick);
+  }
+  function moveHighlight() {
+    const hl = $('hl'); if (!hl || !geo) return;
+    hl.setAttribute('x', (geo.LM + state.sel * geo.cw).toFixed(1));
+  }
+
+  /* legend */
+  function renderLegend() {
+    const stops = C.STOPS.map((s) => 'rgb(' + s[1].join(',') + ') ' + (s[0] / C.WMAX * 100).toFixed(1) + '%').join(',');
+    const ticks = [0, 1, 2, 3, 4].map((v) => '<span>' + (state.lunit === 'kt' ? (v * KT).toFixed(0) : v) + '</span>').join('');
+    $('legend').innerHTML =
+      '<div class="ramp"><div>Thermal strength W* (' + lUnit() + ')</div><div class="bar" style="background:linear-gradient(90deg,' + stops + ')"></div><div class="ticks">' + ticks + '</div></div>' +
+      '<span class="key"><svg viewBox="0 0 26 10"><path d="M1 5H25" stroke="var(--ink)" stroke-width="4.4" stroke-linecap="round"/><path d="M1 5H25" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>Cloudbase</span>' +
+      '<span class="key"><svg viewBox="0 0 26 10"><path d="M1 5H25" stroke="var(--halo)" stroke-width="3.5"/><path d="M1 5H25" stroke="var(--ink)" stroke-width="1.6"/></svg>Ceiling</span>' +
+      '<span class="key"><svg viewBox="0 0 26 10"><rect width="26" height="10" rx="2" fill="var(--cloud)" fill-opacity=".6"/></svg>Cloud layers</span>' +
+      '<span class="key"><svg viewBox="0 0 26 10"><rect width="26" height="10" rx="2" fill="var(--wave)" fill-opacity=".8"/></svg>Wave potential</span>' +
+      '<span class="key">Top strips: high, mid and low cloud cover, rain rate, chance of rain</span>';
+  }
+
+  /* readout */
+  function renderReadout() {
+    const box = $('readout'), h = state.dayHrs[state.sel];
+    if (!h) { box.innerHTML = '<h2>' + esc(dayLabel(state.day)) + '</h2><p>No data for this hour.</p>'; return; }
+    const c = h.calc;
+    const aglList = state.hunit === 'ft' ? [1000, 2000, 3000] : [300, 600, 1000];
+    const wind = (agl) => fmtWind(C.windAt(h.winds, state.data.elev + hInv(agl)));
+    const ceilTxt = !c || !(c.w > 0) ? 'None' : fmtH(c.ceil) + (c.cu ? ' (cloudbase)' : ' (blue)');
+    const items = [
+      ['Thermal strength', c && c.w > 0 ? fmtL(c.w) : 'None'],
+      ['Ceiling', ceilTxt],
+      ['Thermal top', c && c.w > 0 ? fmtH(c.top) : 'n/a'],
+      ['Cloudbase', c ? fmtH(c.cb) : 'n/a'],
+      ['Cloud layers', !(h.clouds && h.clouds.length) ? 'Not given by this model' : (cloudGroups(h).map((g) => Math.round(g.c) + '% at ' + fmtH(g.lo) + (g.hi > g.lo ? ' to ' + fmtH(g.hi) : '')).join('; ') || 'None above 30%')],
+      ['Wave potential', waveLabel(h.wave)],
+      ['Wave ingredients', h.wave ? Math.round(h.wave.w3) + ' kt at ' + fmtH(3000) + ', direction change ' + Math.round(h.wave.shear) + '°, ' + (h.wave.lapse === null ? 'no stable layer found' : 'weakest lapse rate ' + h.wave.lapse.toFixed(1) + ' °C/km') : 'n/a'],
+      ['Sunshine', Number.isFinite(h.sw) ? Math.round(h.sw) + ' W/m²' : 'n/a'],
+      ['Temp / dew point', Number.isFinite(h.T2) ? h.T2.toFixed(1) + '° / ' + h.Td.toFixed(1) + '°' : 'n/a'],
+      ['Cloud high / mid / low', [h.ch, h.cm, h.cl].map((v) => (Number.isFinite(v) ? Math.round(v) : '–')).join(' / ') + '%'],
+      ['Rain rate', Number.isFinite(h.rain) ? h.rain.toFixed(1) + ' mm/h' : 'n/a'],
+      ['Chance of rain', Number.isFinite(h.pop) ? Math.round(h.pop) + '%' : 'Not given by this model'],
+      ['Wind at 10 m', fmtWind(C.windAt(h.winds, state.data.elev + 10))]
+    ].concat(aglList.map((a) => ['Wind ' + a.toLocaleString('en-GB') + ' ' + state.hunit + ' AGL', wind(a)]));
+    box.innerHTML = '<h2>' + esc(dayLabel(state.day)) + ', ' + esc(h.t.slice(11, 16)) + ' · ' + esc(state.site.name) + '</h2><dl class="grid">' +
+      items.map((i) => '<div><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>').join('') + '</dl>';
+  }
+
+  /* briefing: NOTAM map, list and text */
+  const NURL = 'https://pibs.nats.co.uk/operational/pibs/PIB.xml';
+  const TILES = {
+    osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors' },
+    carto: { url: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', attr: '© OpenStreetMap contributors © CARTO' }
+  };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const fmtZ = (ms) => { if (ms === null || ms === undefined) return '?'; const d = new Date(ms); return pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + ' ' + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + 'Z'; };
+  const CARD = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const cardinal = (b) => CARD[Math.round(b / 22.5) % 16];
+  const nColor = (kind) => ({ warn: 'var(--n-warn)', airspace: 'var(--accent)', obstacle: 'var(--wave)', other: 'var(--muted)' }[kind]);
+  const validTxt = (n) => fmtZ(n.from) + ' to ' + (n.perm ? 'PERM' : fmtZ(n.to) + (n.est ? ' EST' : ''));
+  const limitsTxt = (n) => (n.lower || '?') + ' to ' + (n.upper || '?');
+  const titleCase = (s) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  const noticeTitle = (n) => n.id + ' · ' + C.noticeLabel(n.code) + (n.loc ? ' · ' + n.loc : '');
+  const merc = (lat, lon, z) => { const n = 256 * Math.pow(2, z), s = Math.sin(lat * Math.PI / 180); return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n]; };
+
+  /* the window the briefing covers: the chosen date, either 06:00 to 21:00 local or a single hour */
+  function briefWindow() {
+    const p = state.bday.split('-').map(Number), off = state.data.offset * 1000;
+    const h0 = state.bhour === null ? 6 : state.bhour, h1 = state.bhour === null ? 21 : state.bhour + 1;
+    return [Date.UTC(p[0], p[1] - 1, p[2], h0) - off, Date.UTC(p[0], p[1] - 1, p[2], h1) - off];
+  }
+  const windowLabel = () => (state.bhour === null ? '06:00 to 21:00' : pad2(state.bhour) + ':00 to ' + pad2(state.bhour + 1) + ':00');
+  /* highest forecast thermal ceiling (metres AMSL) in that window, 0 when no hour has usable lift */
+  function windowCeilM() {
+    let m = 0;
+    hoursOf(state.bday).forEach((h) => { if (h && h.calc && h.calc.w > 0 && (state.bhour === null || h.hour === state.bhour)) m = Math.max(m, h.calc.ceil); });
+    return m;
+  }
+  function nearNotams() {
+    if (!state.pib || !state.bday || !state.data) return [];
+    const w = briefWindow();
+    return C.nearbyNotams(state.pib.list, state.site.lat, state.site.lon, 50, w[0], w[1]);
+  }
+  function setNotamStatus(msg, warn, link) {
+    const el = $('notamstatus'); el.className = 'nstatus' + (warn ? ' warn' : ''); el.textContent = msg;
+    if (link) {
+      el.append(' ');
+      const a = document.createElement('a'); a.href = NURL; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open the NATS file';
+      el.append(a, ' and save it, then use Load PIB.xml file.');
+    }
+  }
+
+  /* tooltip and selection */
+  function hideTip() { const t = $('maptip'); if (t) t.hidden = true; }
+  function tipHtml(n) {
+    const t = C.displayText(n.text), short = t.length > 700 ? t.slice(0, 700) + '…' : t;
+    return '<b>' + esc(noticeTitle(n)) + '</b>' + (n.place ? '<div class="nmeta">' + esc(titleCase(n.place)) + '</div>' : '') +
+      '<div class="nmeta">' + esc(limitsTxt(n)) + ' · ' + esc(validTxt(n)) + (n.sched ? ' · ' + esc(n.sched) : '') + '</div><div>' + esc(short) + '</div>';
+  }
+  function showTip(i, ev) {
+    const n = state.mapped[i], tip = $('maptip');
+    if (!n || !tip) return;
+    tip.innerHTML = tipHtml(n); tip.hidden = false;
+    const r = $('mapwrap').getBoundingClientRect();
+    tip.style.maxWidth = Math.min(340, r.width - 12) + 'px';
+    let x = ev.clientX - r.left + 14, y = ev.clientY - r.top + 14;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    if (x + tw > r.width - 4) x = Math.max(4, r.width - tw - 4);
+    if (y + th > r.height - 4) y = Math.max(4, ev.clientY - r.top - th - 14);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function highlightMap(i) {
+    state.nsel = i;
+    $('mapwrap').querySelectorAll('[data-i]').forEach((el) => el.classList.toggle('sel', i !== null && +el.dataset.i === i));
+    syncZoomBtn();
+  }
+  function selectNotam(i) {
+    highlightMap(i);
+    $('notamlist').querySelectorAll('details').forEach((d) => { d.open = i !== null && +d.dataset.i === i; });
+    if (i !== null) { const d = $('notamlist').querySelector('details[data-i="' + i + '"]'); if (d) d.scrollIntoView({ block: 'nearest' }); }
+  }
+
+  function drawMap(mapped) {
+    const wrap = $('mapwrap');
+    const W = Math.max(260, Math.min(560, Math.floor(wrap.clientWidth || 360)));
+    const v = state.view || { lat: state.site.lat, lon: state.site.lon, span: 110 };
+    const k = W / v.span, c = W / 2, site = state.site, tile = TILES[state.tiles];
+    /* Web Mercator, so tiles and notices line up. f turns tile pixels into screen pixels. */
+    const cosv = Math.cos(v.lat * Math.PI / 180);
+    const z = Math.max(5, Math.min(17, Math.ceil(Math.log2(156543.03392 * cosv / (v.span * 1000 / W)) + 0.4)));
+    const mpp = 156543.03392 * cosv / Math.pow(2, z);
+    const f = k / (1000 / mpp), P0 = merc(v.lat, v.lon, z);
+    const pt = (la, lo) => { const p = merc(la, lo, z); return [c + (p[0] - P0[0]) * f, c + (p[1] - P0[1]) * f]; };
+    const sp = pt(site.lat, site.lon);
+    const clamp = (v) => Math.max(11, Math.min(W - 11, v));
+    const fx = (v) => v.toFixed(1);
+    let s = '<svg viewBox="0 0 ' + W + ' ' + W + '" role="img" aria-label="Map of notices within 50 km of ' + esc(site.name) + '">';
+    s += '<rect width="' + W + '" height="' + W + '" fill="var(--plot)"/>';
+    if (tile) {
+      const nT = Math.pow(2, z), x0 = Math.floor((P0[0] - c / f) / 256), x1 = Math.floor((P0[0] + c / f) / 256);
+      const y0 = Math.floor((P0[1] - c / f) / 256), y1 = Math.floor((P0[1] + c / f) / 256);
+      for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+        if (ty < 0 || ty >= nT) continue;
+        const u = tile.url.replace('{z}', z).replace('{x}', ((tx % nT) + nT) % nT).replace('{y}', ty);
+        s += '<image href="' + u + '" x="' + fx(c + (tx * 256 - P0[0]) * f) + '" y="' + fx(c + (ty * 256 - P0[1]) * f) + '" width="' + fx(256 * f + 0.6) + '" height="' + fx(256 * f + 0.6) + '" preserveAspectRatio="none"/>';
+      }
+    }
+    [10, 25, 50].forEach((r) => {
+      s += '<circle cx="' + fx(sp[0]) + '" cy="' + fx(sp[1]) + '" r="' + fx(r * k) + '" fill="none" stroke="var(--ink)" stroke-opacity=".45" stroke-width="' + (r === 50 ? 1.6 : 1) + '"' + (r === 50 ? '' : ' stroke-dasharray="4 4"') + '/>';
+      s += '<text class="lab" x="' + fx(sp[0] + 4) + '" y="' + fx(sp[1] - r * k + 11) + '">' + r + ' km</text>';
+    });
+    s += '<text class="lab" x="8" y="15">N ↑</text>';
+
+    /* biggest first, so smaller areas sit on top of larger ones */
+    const order = mapped.map((n, i) => i).sort((a, b) => mapped[b].area - mapped[a].area);
+    order.forEach((i) => {
+      const n = mapped[i], col = nColor(C.noticeKind(n.code));
+      if (n.poly) {
+        n.polys.forEach((poly) => {
+          const d = poly.map((q, j) => (j ? 'L' : 'M') + pt(q[0], q[1]).map(fx).join(' ')).join('') + (n.line ? '' : 'Z');
+          s += '<path class="nshape" data-i="' + i + '" d="' + d + '" fill="' + (n.line ? 'none' : col) + '" fill-opacity=".25" stroke="' + col + '" stroke-width="1.8" stroke-linejoin="round"' + (n.line ? ' style="pointer-events:stroke"' : '') + '/>';
+        });
+      } else {
+        const p = pt(n.lat, n.lon), r = n.rKm * k;
+        if (r < 5) s += '<circle class="nshape" data-i="' + i + '" cx="' + fx(p[0]) + '" cy="' + fx(p[1]) + '" r="5" fill="' + col + '" fill-opacity=".4" stroke="' + col + '" stroke-width="1.6"/>';
+        else s += '<circle class="nshape" data-i="' + i + '" cx="' + fx(p[0]) + '" cy="' + fx(p[1]) + '" r="' + fx(r) + '" fill="' + col + '" fill-opacity="' + (n.big ? 0.06 : 0.22) + '" stroke="' + col + '" stroke-width="1.6"' + (n.big ? ' stroke-dasharray="6 4"' : '') + '/>';
+      }
+    });
+    s += '<circle cx="' + fx(sp[0]) + '" cy="' + fx(sp[1]) + '" r="4.5" fill="var(--ink)" stroke="var(--halo)" stroke-width="2" pointer-events="none"/>';
+    s += '<text class="lab" x="' + fx(sp[0] + 8) + '" y="' + fx(sp[1] + 4) + '" style="font-weight:600">' + esc(site.name) + '</text>';
+    order.forEach((i) => {
+      const n = mapped[i], col = nColor(C.noticeKind(n.code)), p = pt(n.clat, n.clon);
+      const lx = fx(clamp(p[0])), ly = fx(clamp(p[1]));
+      s += '<g class="nbadge" data-i="' + i + '"><circle cx="' + lx + '" cy="' + ly + '" r="8" fill="var(--surface)" stroke="' + col + '" stroke-width="1.6"/>' +
+        '<text class="ax" x="' + lx + '" y="' + fx(+ly + 3.2) + '" text-anchor="middle" style="fill:var(--ink);font-weight:600;pointer-events:none">' + (i + 1) + '</text></g>';
+    });
+    if (tile) s += '<text class="lab" x="6" y="' + (W - 6) + '" style="font-size:9px">' + esc(tile.attr) + '</text>';
+    s += '<text class="lab" x="' + (W - 6) + '" y="' + (W - 6) + '" text-anchor="end" style="font-size:9px">' + (v.span < 20 ? v.span.toFixed(1) : Math.round(v.span)) + ' km across</text>';
+    s += '</svg>';
+    wrap.innerHTML = s;
+    const tip = document.createElement('div'); tip.id = 'maptip'; tip.className = 'maptip'; tip.hidden = true; wrap.append(tip);
+    state.mapped = mapped; state.pin = null; state.nsel = null;
+    syncZoomBtn();
+  }
+  function syncZoomBtn() {
+    const b = $('mapzoom'); if (!b) return;
+    b.textContent = state.view ? 'Show the full 50 km view' : 'Zoom to selected notice';
+    b.disabled = !state.view && state.nsel === null;
+  }
+  function zoomTo(i) {
+    const n = state.mapped[i]; if (!n) return;
+    if (n.poly) {
+      const pts = [].concat.apply([], n.polys), cl = Math.cos(n.clat * Math.PI / 180);
+      const la = pts.map((p) => p[0]), lo = pts.map((p) => p[1]);
+      const mnA = Math.min.apply(null, la), mxA = Math.max.apply(null, la), mnO = Math.min.apply(null, lo), mxO = Math.max.apply(null, lo);
+      const ext = Math.max((mxA - mnA) * 111.2, (mxO - mnO) * 111.2 * cl);
+      state.view = { lat: (mnA + mxA) / 2, lon: (mnO + mxO) / 2, span: Math.max(2, Math.min(110, ext * 1.8)) };
+    } else state.view = { lat: n.lat, lon: n.lon, span: Math.max(2, Math.min(110, n.rKm * 3.4)) };
+  }
+  function redrawMap() { const keep = state.nsel; drawMap(state.mapped); if (keep !== null) highlightMap(keep); syncZoomBtn(); }
+
+  function renderNotamList(near, mapped) {
+    const box = $('notamlist');
+    if (!state.pib) { box.innerHTML = '<p class="muted">NOTAMs are not loaded. Use Fetch NOTAMs, or save the NATS PIB.xml file and load it here.</p>'; return; }
+    const wide = near.filter((n) => n.wide), ceilM = windowCeilM(), elevFt = state.data.elev * FT;
+    let h = '<h3>' + mapped.length + ' within 50 km</h3><p class="muted">In force on ' + esc(dayLabel(state.bday)) + ', ' + windowLabel() + ' local. Select one to read it.</p>';
+    if (!mapped.length) h += '<p class="muted">No notices reach within 50 km of the site in that window.</p>';
+    h += '<ol class="nlist">';
+    mapped.forEach((n, i) => {
+      const lo = C.limitFt(n.lower, elevFt), below = lo !== null && ceilM > 0 && lo < ceilM * FT;
+      const tags = (below ? '<span class="tag" title="The lower limit of this notice is under the highest thermal ceiling the model forecasts for the chosen window.">Starts below forecast ceiling ' + esc(fmtH(ceilM)) + '</span>' : '') +
+        (n.schedUnknown ? '<span class="tag" title="The schedule is written in a form this page cannot read, so the notice is shown. Read the text.">Schedule not read</span>' : '');
+      const where = n.poly ? (n.dist < 0.05 ? 'Over the site' : 'Nearest edge ' + Math.round(n.dist) + ' km') : 'Centre ' + Math.round(n.dist) + ' km';
+      h += '<li><span class="nnum">' + (i + 1) + '</span><details data-i="' + i + '"><summary><b>' + esc(noticeTitle(n)) + '</b>' + tags +
+        '<span class="nmeta">' + (n.place ? esc(titleCase(n.place)) + ' · ' : '') + where + ' ' + cardinal(n.bearing) + (n.poly ? '' : ', radius ' + esc(n.rNM) + ' NM') + ' · ' + esc(limitsTxt(n)) + '</span></summary>' +
+        '<div class="nmeta">' + esc(validTxt(n)) + (n.sched ? ' · ' + esc(n.sched) : '') + '</div><div class="ntext">' + esc(C.displayText(n.text)) + '</div></details></li>';
+    });
+    h += '</ol>';
+    if (wide.length) {
+      h += '<h3>' + wide.length + ' wide-area</h3><p class="muted">These cover a whole region, so they are listed but not drawn.</p><ol class="nlist">' +
+        wide.map((n) => '<li><details><summary><b>' + esc(noticeTitle(n)) + '</b></summary><div class="ntext">' + esc(C.displayText(n.text)) + '</div></details></li>').join('') + '</ol>';
+    }
+    box.innerHTML = h;
+  }
+
+  function syncBriefControls() {
+    const days = dayList(), sel = $('bdate'), sig = days.join();
+    if (sel.dataset.sig !== sig) {
+      sel.textContent = '';
+      days.forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = dayLabel(k); sel.append(o); });
+      sel.dataset.sig = sig;
+    }
+    sel.value = state.bday;
+    $('ball').checked = state.bhour === null;
+    $('bhour').disabled = state.bhour === null;
+    if (state.bhour !== null) $('bhour').value = String(state.bhour);
+    $('btime').textContent = windowLabel();
+    $('btiles').value = state.tiles;
+  }
+
+  function renderBrief() {
+    if (!state.data || !state.bday) return;
+    syncBriefControls();
+    const near = nearNotams(), mapped = near.filter((n) => !n.wide);
+    drawMap(mapped); renderNotamList(near, mapped);
+  }
+
+  function setPib(text, label, demo) {
+    const list = C.parseNotamXml(text);
+    if (!list.length) { setNotamStatus('No NOTAMs found in that file. Is it the full UK PIB.xml?', true); return; }
+    const at = pad2(new Date().getHours()) + ':' + pad2(new Date().getMinutes());
+    state.pib = { list: list, label: label, at: at, ms: Date.now(), cached: false, demo: !!demo };
+    if (!demo) cachePut('soar-pib', { at: state.pib.ms, label: label, site: { lat: state.site.lat, lon: state.site.lon }, list: prunePib(list) });
+    setNotamStatus(demo ? 'Demo notices, invented for testing. Do not use them for flying.' : label + ': ' + list.length + ' notices read at ' + at + '.', !!demo);
+    renderBrief();
+  }
+
+  /* From the local server when there is one (see serve.py), otherwise straight from NATS, which most browsers block. */
+  const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  async function fetchPib(signal) {
+    if (!isNative() && /^https?:$/.test(location.protocol)) {
+      try {
+        const r = await fetch('PIB.xml', { signal: signal });
+        if (r.ok) { const t = await r.text(); if (/<Notam[\s>]/.test(t)) return { text: t, label: 'NATS UK PIB (local server)' }; }
+      } catch (e) { if (e && e.name === 'AbortError') throw e; }
+    }
+    const r = await fetch(NURL, { signal: signal });
+    if (!r.ok) throw new Error('status ' + r.status);
+    return { text: await r.text(), label: 'NATS UK PIB' };
+  }
+  async function loadNotams() {
+    setNotamStatus('Fetching NOTAMs from NATS…');
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
+    try { const r = await fetchPib(ctl.signal); setPib(r.text, r.label, false); }
+    catch (e) {
+      const c = cacheGet('soar-pib');
+      if (c && c.list && c.list.length && c.site && C.haversineKm(state.site.lat, state.site.lon, c.site.lat, c.site.lon) < 150) {
+        state.pib = { list: c.list, label: 'Saved copy', at: hhmm(c.at), ms: c.at, cached: true, demo: false };
+        setNotamStatus('No connection to NATS. Showing the NOTAMs saved at ' + hhmm(c.at) + ' (' + ageTxt(Date.now() - c.at) + '). They may be out of date, so check an official briefing.', true);
+        renderBrief();
+      } else setNotamStatus('Could not fetch NOTAMs (' + (e && e.name === 'AbortError' ? 'timed out' : 'blocked by the browser, or no connection') + ').', true, !isNative());
+    }
+    finally { clearTimeout(timer); }
+  }
+
+  /* saved copies, so the app still shows something with no signal */
+  const hhmm = (ms) => pad2(new Date(ms).getHours()) + ':' + pad2(new Date(ms).getMinutes());
+  const ageTxt = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m < 90 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; };
+  const wxKey = () => 'soar-wx:' + state.site.lat.toFixed(3) + ',' + state.site.lon.toFixed(3) + ':' + state.model + ':' + (state.elev !== null ? state.elev : (Number.isFinite(state.site.elev) ? state.site.elev : ''));
+  function cachePut(key, obj) { try { localStorage.setItem(key, JSON.stringify(obj)); return true; } catch (e) { return false; } }
+  function cacheGet(key) { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function pruneWx() {
+    try {
+      const keys = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('soar-wx:') === 0) keys.push(k); }
+      if (keys.length <= 6) return;
+      keys.map((k) => ({ k: k, at: (cacheGet(k) || {}).at || 0 })).sort((a, b) => b.at - a.at).slice(6).forEach((o) => localStorage.removeItem(o.k));
+    } catch (e) {}
+  }
+  /* only notices within 300 km of the site, and nothing that ended more than a day ago */
+  function prunePib(list) {
+    const s = state.site;
+    return list.filter((n) => {
+      if (n.lat === null) return false;
+      if (n.to !== null && n.to < Date.now() - 864e5) return false;
+      if (n.rNM >= 999) return true;
+      const c = n.cen || { lat: n.lat, lon: n.lon };
+      return C.haversineKm(s.lat, s.lon, c.lat, c.lon) < 300;
+    });
+  }
+
+  function renderAll() { updateStatus(); renderDays(); drawChart(); renderLegend(); renderReadout(); renderBrief(); }
+
+  /* controls */
+  function fillSites() {
+    const sel = $('site'); sel.textContent = '';
+    const list = SITES.slice(); if (state.custom && !SITES.some((s) => s.name === state.custom.name)) list.push(state.custom);
+    list.forEach((s, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = s.name; if (s.name === state.site.name) o.selected = true; sel.append(o); });
+    sel._list = list;
+  }
+  function elevHint() { $('elev').placeholder = Number.isFinite(state.site.elev) ? state.site.elev + ' m (field)' : 'metres, optional'; }
+  function useSite(s) { state.site = s; state.elev = null; $('elev').value = ''; elevHint(); save(); fillSites(); load(); }
+
+  async function search(q) {
+    const ul = $('results'); ul.hidden = false; ul.textContent = '';
+    const li = document.createElement('li'); li.className = 'none'; li.textContent = 'Searching…'; ul.append(li);
+    try {
+      const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=6&language=en&format=json&name=' + encodeURIComponent(q));
+      const j = await r.json();
+      ul.textContent = '';
+      if (!j.results || !j.results.length) { const n = document.createElement('li'); n.className = 'none'; n.textContent = 'No places found.'; ul.append(n); return; }
+      j.results.forEach((p) => {
+        const li2 = document.createElement('li'), b = document.createElement('button'); b.type = 'button';
+        b.textContent = [p.name, p.admin1, p.country].filter(Boolean).join(', ');
+        b.addEventListener('click', () => {
+          ul.hidden = true; ul.textContent = ''; $('q').value = '';
+          state.custom = { name: [p.name, p.admin1].filter(Boolean).join(', '), lat: p.latitude, lon: p.longitude };
+          useSite(state.custom);
+        });
+        li2.append(b); ul.append(li2);
+      });
+    } catch (e) { ul.textContent = ''; const n = document.createElement('li'); n.className = 'none'; n.textContent = 'Search failed. Check your connection.'; ul.append(n); }
+  }
+
+  function init() {
+    restore(); fillSites();
+    $('model').value = state.model; $('hunit').value = state.hunit; $('lunit').value = state.lunit;
+    if (state.elev !== null) $('elev').value = String(state.elev);
+    elevHint();
+    $('site').addEventListener('change', (e) => useSite(e.target._list[+e.target.value]));
+    $('model').addEventListener('change', (e) => { state.model = e.target.value; save(); load(); });
+    $('hunit').addEventListener('change', (e) => { state.hunit = e.target.value; save(); if (state.data) renderAll(); });
+    $('lunit').addEventListener('change', (e) => { state.lunit = e.target.value; save(); if (state.data) renderAll(); });
+    $('elev').addEventListener('change', (e) => { const v = parseFloat(e.target.value); state.elev = Number.isFinite(v) && v >= 0 ? v : null; save(); load(); });
+    $('searchform').addEventListener('submit', (e) => { e.preventDefault(); const q = $('q').value.trim(); if (q.length > 1) search(q); });
+    $('chartwrap').addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      state.sel = Math.max(0, Math.min(HOURS.length - 1, state.sel + (e.key === 'ArrowRight' ? 1 : -1)));
+      moveHighlight(); renderReadout();
+    });
+    let lastW = 0, raf = 0;
+    const onSize = () => { const w = $('chartwrap').clientWidth; if (state.data && w !== lastW) { lastW = w; cancelAnimationFrame(raf); raf = requestAnimationFrame(drawChart); } };
+    if (window.ResizeObserver) new ResizeObserver(onSize).observe($('chartwrap')); else window.addEventListener('resize', onSize);
+    let lastMW = 0;
+    if (window.ResizeObserver) new ResizeObserver(() => { const w = $('mapwrap').clientWidth; if (state.data && w !== lastMW) { lastMW = w; renderBrief(); } }).observe($('mapwrap'));
+    $('bdate').addEventListener('change', (e) => { state.bday = e.target.value; state.view = null; renderBrief(); });
+    $('ball').addEventListener('change', (e) => { state.bhour = e.target.checked ? null : +$('bhour').value; state.view = null; renderBrief(); });
+    $('bhour').addEventListener('input', (e) => { state.bhour = +e.target.value; state.view = null; renderBrief(); });
+    $('mapzoom').addEventListener('click', () => {
+      if (state.view) state.view = null; else if (state.nsel !== null) zoomTo(state.nsel); else return;
+      redrawMap();
+    });
+    $('btiles').addEventListener('change', (e) => { state.tiles = e.target.value; save(); renderBrief(); });
+    const mw = $('mapwrap');
+    mw.addEventListener('pointermove', (e) => {
+      if (state.pin !== null) return;
+      const el = e.target.closest && e.target.closest('[data-i]');
+      if (el) showTip(+el.dataset.i, e); else hideTip();
+    });
+    mw.addEventListener('pointerleave', () => { if (state.pin === null) hideTip(); });
+    mw.addEventListener('click', (e) => {
+      const el = e.target.closest && e.target.closest('[data-i]');
+      if (el) { const i = +el.dataset.i; state.pin = i; showTip(i, e); selectNotam(i); }
+      else { state.pin = null; hideTip(); selectNotam(null); }
+    });
+    $('notamlist').addEventListener('click', (e) => {
+      const sm = e.target.closest && e.target.closest('summary');
+      if (!sm || !sm.parentElement.dataset.i) return;
+      state.pin = null; hideTip(); highlightMap(+sm.parentElement.dataset.i);
+    });
+    $('notamload').addEventListener('click', loadNotams);
+    $('notamdemo').addEventListener('click', () => setPib(C.makeDemoPib(state.site.lat, state.site.lon, Date.now()), 'Demo notices', true));
+    $('pibfile').addEventListener('change', async (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      try { setPib(await f.text(), f.name, false); } catch (err) { setNotamStatus('Could not read that file.', true); }
+      e.target.value = '';
+    });
+    /* keep the ages current, and refresh when the page or app comes back after a while */
+    setInterval(() => { if (state.data && !state.demo) updateStatus(); }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.data && !state.demo && Date.now() - state.wxAt > 20 * 60000) { load(); loadNotams(); }
+    });
+    load();
+    loadNotams();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
