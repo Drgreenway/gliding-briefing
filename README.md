@@ -29,6 +29,7 @@ Built around Seighford Gliding Club (Staffordshire, UK), but the site location c
 | `src/soaring-meteogram.html` | The whole app, one HTML file. Edit this only. |
 | `capacitor.config.json` | Capacitor settings (native HTTP so the NATS file loads, safe-area handling). |
 | `.github/workflows/build-apk.yml` | Builds a debug APK on GitHub for free. |
+| `run.py`, `Soaring Meteogram.command` | One-step launcher for Mac/PC: starts the local server and opens the page. |
 | `scripts/` | Helpers that copy the page into the app and build it locally. |
 | `BUILD.md` | Step-by-step build and install instructions, and troubleshooting. |
 
@@ -39,6 +40,20 @@ Built around Seighford Gliding Club (Staffordshire, UK), but the site location c
 3. Each build is signed with a new debug key, so uninstall the previous version first.
 
 See [BUILD.md](BUILD.md) for building on your own computer and for troubleshooting.
+
+## Using it on a Mac or PC
+
+Browsers block pages from reading the NATS NOTAM file directly, so the desktop version needs a tiny local server.
+`run.py` starts one and opens the page in your browser, all in one step. It needs only Python 3, which
+a Mac prompts you to install the first time if it is missing.
+
+- **Mac:** double-click `Soaring Meteogram.command`. The first time, macOS may refuse; right-click it, choose **Open**, then **Open** again.
+  If it says it cannot be executed, run `chmod +x "Soaring Meteogram.command"` once in Terminal.
+- **Any system:** run `python3 run.py` in this folder (Windows: `py run.py`).
+
+Leave the window open while you use the page and press Ctrl+C to stop. It serves the same `src/soaring-meteogram.html`
+as the Android app and keeps the NOTAM file for 10 minutes between downloads.
+The page saves its settings and cached forecast per address, so it uses port 8000 whenever that is free.
 
 ## Updating
 
